@@ -2217,6 +2217,8 @@ function PublishSection({ project, allReady, completion, setCurrentSection }) {
         <BatchZipButton enabled={enabled} project={project} cover={cover} />
       </div>
 
+      <BatchUploadPanel enabled={enabled} project={project} />
+
       <div className="mt-5 space-y-4">
         {enabled.map(p => (
           <PlatformPackageCard
@@ -2230,6 +2232,90 @@ function PublishSection({ project, allReady, completion, setCurrentSection }) {
       </div>
 
       <SectionNav backLabel="Back to Platforms" onBack={() => setCurrentSection('platforms')} />
+    </div>
+  );
+}
+
+// Top-level batch upload (DEMO). Simulates one-click publishing to every enabled
+// platform that has an upload API (Cults3D, MyMiniFactory, Thingiverse).
+function BatchUploadPanel({ enabled, project }) {
+  const apiPlatforms = enabled.filter(p => p.hasApi);
+  const manualPlatforms = enabled.filter(p => !p.hasApi);
+  const [status, setStatus] = useState('idle'); // idle | running | done
+  const [results, setResults] = useState([]);
+  const cancelled = useRef(false);
+  useEffect(() => () => { cancelled.current = true; }, []);
+  const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+
+  const urlFor = (id, slug) => ({
+    cults: `https://cults3d.com/en/3d-model/${slug}`,
+    mmf: `https://www.myminifactory.com/object/${slug}`,
+    thingiverse: `https://www.thingiverse.com/thing:${slug}`,
+  }[id] || '#');
+
+  const run = async () => {
+    if (!apiPlatforms.length || status === 'running') return;
+    setStatus('running');
+    setResults(apiPlatforms.map(p => ({ id: p.id, name: p.name, state: 'pending', url: '' })));
+    const slug = slugify(project.title) || 'model';
+    for (let i = 0; i < apiPlatforms.length; i++) {
+      if (cancelled.current) return;
+      setResults(rs => rs.map((r, idx) => idx === i ? { ...r, state: 'uploading' } : r));
+      await sleep(1200);
+      if (cancelled.current) return;
+      setResults(rs => rs.map((r, idx) => idx === i ? { ...r, state: 'done', url: urlFor(r.id, slug) } : r));
+    }
+    if (cancelled.current) return;
+    setStatus('done');
+  };
+
+  return (
+    <div className="mt-3 mp-card p-4" style={{ background: 'rgba(58,134,255,0.05)', border: '1px solid rgba(58,134,255,0.35)' }}>
+      <div className="flex flex-col md:flex-row md:items-center gap-3 md:gap-5">
+        <div className="flex-1">
+          <div className="flex items-center gap-2 mb-1 flex-wrap">
+            <span className="mp-display text-[15px] leading-none">Upload to all API platforms</span>
+            <span className="mp-mono text-[8px] uppercase tracking-[0.2em] px-1.5 py-0.5" style={{ background: '#3A86FF', color: '#fff' }}>Demo</span>
+          </div>
+          <p className="mp-body text-xs leading-relaxed" style={{ color: 'rgba(21,23,28,0.7)' }}>
+            {apiPlatforms.length > 0
+              ? <>Publishes to {apiPlatforms.map(p => p.name).join(', ')} in one go via their upload APIs. {manualPlatforms.length > 0 && <>The other {manualPlatforms.length} ({manualPlatforms.map(p => p.name).join(', ')}) have no API — download their .zip and upload manually.</>}</>
+              : <>None of your enabled platforms have an upload API. Enable Cults3D, MyMiniFactory or Thingiverse to use one-click upload.</>}
+          </p>
+        </div>
+        <button
+          onClick={run}
+          disabled={!apiPlatforms.length || status === 'running'}
+          className="mp-btn text-[12px] py-2.5 px-4 disabled:opacity-40 flex-shrink-0"
+          style={apiPlatforms.length ? { background: '#3A86FF', borderColor: '#3A86FF' } : undefined}
+        >
+          {status === 'running'
+            ? <><Loader size={13} className="mp-spin" /> Uploading…</>
+            : <><Send size={13} /> Upload to {apiPlatforms.length || 'all'} platform{apiPlatforms.length === 1 ? '' : 's'}</>}
+        </button>
+      </div>
+
+      {results.length > 0 && (
+        <div className="mt-3 space-y-1.5">
+          {results.map(r => (
+            <div key={r.id} className="flex items-center gap-2 text-xs mp-card p-2" style={{ background: '#FFFFFF' }}>
+              {r.state === 'done'
+                ? <Check size={13} style={{ color: '#3a8d68' }} className="flex-shrink-0" />
+                : r.state === 'uploading'
+                  ? <Loader size={13} className="mp-spin flex-shrink-0" style={{ color: '#3A86FF' }} />
+                  : <div className="w-[13px] h-[13px] rounded-full flex-shrink-0" style={{ border: '1.5px solid rgba(21,23,28,0.2)' }} />}
+              <span className="mp-display font-bold flex-shrink-0" style={{ minWidth: 120 }}>{r.name}</span>
+              <span className="mp-mono text-[10px] truncate" style={{ color: 'rgba(21,23,28,0.55)' }}>
+                {r.state === 'done' ? (r.id === 'mmf' ? 'queued for curation' : r.url) : r.state === 'uploading' ? 'uploading…' : 'waiting'}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <p className="text-[9px] mt-2.5 leading-snug" style={{ color: 'rgba(21,23,28,0.4)' }}>
+        Simulation only — nothing is uploaded yet. Real API upload is the next build phase.
+      </p>
     </div>
   );
 }
@@ -2331,6 +2417,7 @@ function PlatformPackageCard({ platform, project, cover, platformState }) {
   const [expanded, setExpanded] = useState(true);
   const [downloading, setDownloading] = useState(false);
   const [progressMsg, setProgressMsg] = useState(null);
+  const [uploadSignal, setUploadSignal] = useState(0);
 
   const desc = useMemo(() => {
     if (platform.descFormat === 'markdown') return project.description;
@@ -2476,6 +2563,16 @@ function PlatformPackageCard({ platform, project, cover, platformState }) {
         </div>
 
         <div className="flex items-center gap-2 flex-wrap justify-end">
+          {platform.hasApi && (
+            <button
+              onClick={() => { setExpanded(true); setUploadSignal(n => n + 1); }}
+              className="mp-btn text-[12px] py-2 px-3"
+              style={{ background: '#3A86FF', borderColor: '#3A86FF' }}
+              title="Preview one-click upload (demo)"
+            >
+              <Send size={12} /> One-click upload
+            </button>
+          )}
           <button
             onClick={downloadEverything}
             disabled={downloading || !cover}
@@ -2638,7 +2735,7 @@ function PlatformPackageCard({ platform, project, cover, platformState }) {
           )}
 
           {/* One-click upload (demo) — only platforms with a real upload API */}
-          {platform.hasApi && <MockUploadFlow platform={platform} project={project} />}
+          {platform.hasApi && <MockUploadFlow platform={platform} project={project} startSignal={uploadSignal} />}
 
           {/* Workflow hint */}
           <div className="border-t pt-3 flex items-start gap-2 text-[11px]" style={{ borderColor: 'rgba(21,23,28,0.08)', color: 'rgba(21,23,28,0.6)' }}>
@@ -2710,11 +2807,13 @@ function RichCopyButton({ html, plain, label = 'Copy formatted' }) {
 // Simulated one-click upload for platforms with a real upload API (Cults3D,
 // MyMiniFactory, Thingiverse). This is a DEMO — no network calls, no real upload.
 // It previews the UX that a backend-backed v0.3 would deliver.
-function MockUploadFlow({ platform, project }) {
+function MockUploadFlow({ platform, project, startSignal = 0 }) {
   const [status, setStatus] = useState('idle'); // idle | connecting | connected | uploading | done
   const [stepMsg, setStepMsg] = useState('');
   const [resultUrl, setResultUrl] = useState('');
   const cancelled = useRef(false);
+  const statusRef = useRef('idle');
+  useEffect(() => { statusRef.current = status; }, [status]);
   useEffect(() => () => { cancelled.current = true; }, []);
   const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
@@ -2727,6 +2826,12 @@ function MockUploadFlow({ platform, project }) {
     if (cancelled.current) return;
     setStatus('connected');
   };
+
+  // Triggered by the "One-click upload" button on the collapsed row.
+  useEffect(() => {
+    if (startSignal > 0 && statusRef.current === 'idle') connect();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [startSignal]);
 
   const publish = async () => {
     setStatus('uploading');
