@@ -608,6 +608,11 @@ export default function App() {
   const toggleDemo = () => {
     if (!demoActive) {
       stashedProject.current = project;
+      // Persist the real project's text/settings now, so it survives even a reload
+      // while in demo (autosave is suppressed during demo).
+      try {
+        if (projectHasContent(project)) localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(serializeProjectMeta(project)));
+      } catch (e) { /* ignore */ }
       setProject(buildDemoProject());
       setDemoActive(true);
       setCurrentSection('files');
@@ -670,9 +675,9 @@ export default function App() {
     if (!saved || (!saved.title && !saved.description && !(saved.tags || []).length)) return;
     setDialog({
       kind: 'confirm',
-      title: 'Restore previous session?',
-      message: `Found unsaved work${saved.title ? ` for “${saved.title}”` : ''} — description, tags, category, license and platform settings. (Files and images need re-adding.)`,
-      confirmLabel: 'Restore',
+      title: 'Restore text & settings?',
+      message: `We saved your text${saved.title ? ` for “${saved.title}”` : ''} — title, description, tags, category, license and platform settings. We could NOT save your model files, images, or print profiles, so you'll need to re-add those.`,
+      confirmLabel: 'Restore text & settings',
       onConfirm: () => updateProject({
         name: saved.name || 'Untitled Project',
         title: saved.title || '',
@@ -872,6 +877,10 @@ function StatusBar({ project, completion, currentSection }) {
   const enabledCount = Object.values(project.platforms).filter(p => p.enabled).length;
   const doneCount = Object.values(completion).filter(Boolean).length;
   const totalSteps = Object.keys(completion).length - 1; // publish doesn't count
+  const allDone = doneCount >= totalSteps;
+  const status = doneCount === 0 ? { label: 'EMPTY', color: '#FFB627' }
+    : allDone ? { label: 'READY TO PUBLISH', color: '#4FB286' }
+    : { label: 'IN PROGRESS', color: '#FFB627' };
   return (
     <div className="fixed bottom-0 left-0 right-0 z-20 border-t" style={{
       background: '#15171C',
@@ -882,8 +891,8 @@ function StatusBar({ project, completion, currentSection }) {
       <div className="max-w-[1400px] mx-auto h-full flex items-center justify-between px-4 sm:px-6 overflow-x-auto whitespace-nowrap">
         <div className="flex items-center gap-3 sm:gap-5 mp-mono text-[12px] uppercase tracking-[0.15em]">
           <span className="flex items-center gap-1.5">
-            <span className="w-1.5 h-1.5" style={{ background: '#4FB286' }} />
-            READY
+            <span className="w-1.5 h-1.5" style={{ background: status.color }} />
+            {status.label}
           </span>
           <span className="hidden sm:inline" style={{ color: 'rgba(237,233,222,0.5)' }}>│</span>
           <span className="hidden sm:inline">SECTION /{currentSection.toUpperCase()}</span>
@@ -971,6 +980,9 @@ function GlobalStyles() {
 
       .mp-input { background: #FFFFFF; border: 1px solid rgba(21,23,28,0.18); padding: 0.7rem 0.95rem; min-height: 44px; font-family: 'Space Grotesk', system-ui, sans-serif; font-size: 0.95rem; width: 100%; color: #15171C; }
       .mp-input:focus { outline: none; border-color: #FF5722; box-shadow: inset 0 0 0 1px #FF5722; }
+      /* Compact input variant for inline controls (datetime, price). One height for all. */
+      .mp-input-sm { background: #FFFFFF; border: 1px solid rgba(21,23,28,0.18); padding: 0.4rem 0.6rem; min-height: 38px; font-family: 'Space Grotesk', system-ui, sans-serif; font-size: 0.9rem; color: #15171C; }
+      .mp-input-sm:focus { outline: none; border-color: #FF5722; box-shadow: inset 0 0 0 1px #FF5722; }
 
       .mp-btn { font-family: 'Big Shoulders Display'; font-weight: 800; font-size: 1rem; text-transform: uppercase; letter-spacing: 0.03em; padding: 0.7rem 1.25rem; min-height: 44px; background: #15171C; color: #EDE9DE; cursor: pointer; transition: background 0.15s; display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem; border: 1px solid #15171C; }
       .mp-btn:hover:not(:disabled) { background: #FF5722; border-color: #FF5722; }
@@ -1344,6 +1356,7 @@ function FilesSection({ project, updateProject, setCurrentSection }) {
         backLabel={null}
         nextLabel="Continue to Details"
         nextDisabled={project.files.length === 0}
+        disabledReason="Add at least one model file to continue"
         onNext={() => setCurrentSection('details')}
       />
     </div>
@@ -1683,7 +1696,7 @@ function DetailsSection({ project, updateProject, setCurrentSection }) {
               <div className="flex items-center justify-between text-[12px]" style={{ color: 'rgba(21,23,28,0.5)' }}>
                 <span className="mp-mono uppercase tracking-[0.15em]">{project.tags.length}/20 tags</span>
                 <button onClick={suggestTags} className="mp-mono uppercase tracking-[0.15em] flex items-center gap-1 hover:text-[#FF5722] transition">
-                  <Sparkles size={10} /> AI suggest (mock)
+                  <Sparkles size={10} /> Suggest tags
                 </button>
               </div>
             </div>
@@ -1748,6 +1761,7 @@ function DetailsSection({ project, updateProject, setCurrentSection }) {
         backLabel="Back to Files"
         nextLabel="Continue to Images"
         nextDisabled={!project.title || !project.description || !project.category || project.tags.length === 0}
+        disabledReason={`Add ${[!project.title && 'a title', !project.description && 'a description', !project.category && 'a category', project.tags.length === 0 && 'at least one tag'].filter(Boolean).join(', ')} to continue`}
         onBack={() => setCurrentSection('files')}
         onNext={() => setCurrentSection('images')}
       />
@@ -2086,6 +2100,7 @@ function ImagesSection({ project, updateProject, setCurrentSection }) {
         backLabel="Back to Details"
         nextLabel={project.profiles.length ? 'Continue to Profiles' : 'Continue to Platforms'}
         nextDisabled={project.images.length === 0 || !project.coverImageId}
+        disabledReason={project.images.length === 0 ? 'Add at least one image to continue' : 'Pick a cover image to continue'}
         onBack={() => setCurrentSection('details')}
         onNext={() => setCurrentSection(project.profiles.length ? 'profiles' : 'platforms')}
       />
@@ -2260,7 +2275,7 @@ function ProfilesSection({ project, updateProject, setCurrentSection }) {
       <SectionHeader
         number="04"
         title="Print profiles"
-        subtitle="One profile per 3MF file. Add a name and a per-profile description. Profile data was extracted from the 3MF (mocked in this prototype)."
+        subtitle="One profile per 3MF file. Add a name and a per-profile description. Settings below are estimated from the file (preview — full 3MF parsing comes later)."
       />
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 mt-6">
@@ -2304,7 +2319,7 @@ function ProfilesSection({ project, updateProject, setCurrentSection }) {
               {active.parsed && (
                 <div className="mp-card p-4">
                   <div className="mp-mono text-[12px] uppercase tracking-[0.2em] mb-3" style={{ color: 'rgba(21,23,28,0.55)' }}>
-                    Detected from 3MF (mocked)
+                    Estimated from file (preview)
                   </div>
                   <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                     <Stat label="Printer" value={active.parsed.printer} />
@@ -2435,6 +2450,7 @@ function PlatformsSection({ project, updateProject, setCurrentSection }) {
         backLabel={project.profiles.length ? 'Back to Profiles' : 'Back to Images'}
         nextLabel="Continue to Publish"
         nextDisabled={enabledCount === 0}
+        disabledReason="Enable at least one platform to continue"
         onBack={() => setCurrentSection(project.profiles.length ? 'profiles' : 'images')}
         onNext={() => setCurrentSection('publish')}
       />
@@ -2537,8 +2553,8 @@ function PlatformCard({ platform, state, onToggle, onUpdate }) {
                       step="0.50"
                       value={state.price}
                       onChange={(e) => onUpdate('price', parseFloat(e.target.value) || 0)}
-                      className="mp-input"
-                      style={{ width: 80, padding: '0.25rem 0.5rem' }}
+                      className="mp-input-sm"
+                      style={{ width: 90 }}
                     />
                   </div>
                 )}
@@ -2742,8 +2758,7 @@ function BatchUploadPanel({ enabled, project }) {
               onChange={(e) => setScheduledAt(e.target.value)}
               disabled={!apiPlatforms.length}
               aria-label="Schedule publish to all API platforms"
-              className="mp-input"
-              style={{ width: 'auto', minHeight: 36, padding: '0.3rem 0.5rem', fontSize: '0.85rem' }}
+              className="mp-input-sm"
             />
             {scheduledAt && (
               <button onClick={() => setScheduledAt('')} className="mp-mono text-[11px] uppercase tracking-[0.15em] hover:text-[#FF5722] transition" aria-label="Clear schedule">clear</button>
@@ -2758,7 +2773,7 @@ function BatchUploadPanel({ enabled, project }) {
             {status === 'running'
               ? <><Loader size={13} className="mp-spin" /> Uploading…</>
               : scheduledAt
-                ? <><Clock size={13} /> Schedule {apiPlatforms.length || 'all'} for {formatSchedule(scheduledAt)}</>
+                ? <><Clock size={13} /> Save schedule for {formatSchedule(scheduledAt)}</>
                 : <><Send size={13} /> Upload to {apiPlatforms.length || 'all'} platform{apiPlatforms.length === 1 ? '' : 's'}</>}
           </button>
         </div>
@@ -2939,20 +2954,11 @@ function PlatformPackageCard({ platform, project, cover, platformState }) {
         </div>
 
         <div className="flex items-center gap-2 flex-wrap sm:justify-end">
-          {platform.hasApi && (
-            <button
-              onClick={() => { setExpanded(true); setUploadSignal(n => n + 1); }}
-              className="mp-btn text-[13px] py-2 px-3 flex-1 sm:flex-none"
-              style={{ background: '#3A86FF', borderColor: '#3A86FF' }}
-              title="Preview one-click upload (demo)"
-            >
-              <Send size={12} /> One-click upload
-            </button>
-          )}
+          {/* Primary, working path: download the package, then open the upload page. */}
           <button
             onClick={downloadEverything}
             disabled={downloading || !cover}
-            className="mp-btn mp-btn-ghost text-[13px] py-2 px-3 disabled:opacity-40 flex-1 sm:flex-none sm:min-w-[140px]"
+            className="mp-btn text-[13px] py-2 px-3 disabled:opacity-40 flex-1 sm:flex-none sm:min-w-[140px]"
             title={!cover ? 'Add at least one image first' : 'Download a ZIP containing everything for this platform'}
           >
             {downloading ? (
@@ -2961,9 +2967,20 @@ function PlatformPackageCard({ platform, project, cover, platformState }) {
               <><Download size={12} /> {progressMsg ? progressMsg : 'Download .zip'}</>
             )}
           </button>
-          <a href={uploadUrl} target="_blank" rel="noopener noreferrer" className="mp-btn text-[13px] py-2 px-3 flex-1 sm:flex-none">
+          <a href={uploadUrl} target="_blank" rel="noopener noreferrer" className="mp-btn mp-btn-ghost text-[13px] py-2 px-3 flex-1 sm:flex-none">
             <Send size={12} /> Open upload page
           </a>
+          {/* Demo-only one-click upload — visually subordinate (outline, not filled). */}
+          {platform.hasApi && (
+            <button
+              onClick={() => { setExpanded(true); setUploadSignal(n => n + 1); }}
+              className="mp-btn mp-btn-ghost text-[13px] py-2 px-3 flex-1 sm:flex-none"
+              style={{ color: '#3A86FF', borderColor: 'rgba(58,134,255,0.5)' }}
+              title="Preview the upcoming one-click upload (demo only)"
+            >
+              <Send size={12} /> One-click (demo)
+            </button>
+          )}
           <button onClick={() => setExpanded(s => !s)} className="p-2 opacity-60 hover:opacity-100 transition hidden sm:block" aria-label={expanded ? 'Collapse package' : 'Expand package'} aria-expanded={expanded}>
             {expanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
           </button>
@@ -3275,7 +3292,7 @@ function MockUploadFlow({ platform, project, startSignal = 0 }) {
             <div className="flex items-center gap-2 text-xs mb-2.5" style={{ color: '#3a8d68' }}>
               <Check size={14} /> Connected as <span className="mp-mono">@your-handle</span> <span style={{ color: 'rgba(21,23,28,0.4)' }}>(demo)</span>
             </div>
-            <div className="flex items-center gap-2 mb-2.5 flex-wrap">
+            <div className="flex items-center gap-2 mb-1 flex-wrap">
               <label className="mp-mono text-[11px] uppercase tracking-[0.15em] flex items-center gap-1.5" style={{ color: 'rgba(21,23,28,0.6)' }}>
                 <Clock size={12} /> Schedule
               </label>
@@ -3285,15 +3302,15 @@ function MockUploadFlow({ platform, project, startSignal = 0 }) {
                 min={nowLocalMin()}
                 onChange={(e) => setScheduledAt(e.target.value)}
                 aria-label={`Schedule publish to ${platform.name}`}
-                className="mp-input"
-                style={{ width: 'auto', minHeight: 36, padding: '0.3rem 0.5rem', fontSize: '0.85rem' }}
+                className="mp-input-sm"
               />
               {scheduledAt && (
                 <button onClick={() => setScheduledAt('')} className="mp-mono text-[11px] uppercase tracking-[0.15em] hover:text-[#FF5722] transition" aria-label="Clear schedule">clear</button>
               )}
             </div>
+            <p className="text-[11px] mb-2.5 leading-snug" style={{ color: 'rgba(21,23,28,0.45)' }}>Preview only — won't actually publish at that time yet (timed publishing runs server-side, coming with the backend).</p>
             <button onClick={publish} className="mp-btn text-xs py-2 px-3">
-              {scheduledAt ? <><Clock size={13} /> Schedule for {formatSchedule(scheduledAt)}</> : <><Send size={13} /> Publish to {platform.name}</>}
+              {scheduledAt ? <><Clock size={13} /> Save schedule for {formatSchedule(scheduledAt)}</> : <><Send size={13} /> Publish to {platform.name}</>}
             </button>
           </>
         )}
@@ -3320,15 +3337,15 @@ function MockUploadFlow({ platform, project, startSignal = 0 }) {
 
         {status === 'done' && (
           <>
-            <div className="flex items-center gap-2 text-xs mb-1.5" style={{ color: '#3a8d68' }}>
-              <Check size={14} /> {platform.id === 'mmf' ? 'Submitted — queued for curation' : 'Published (simulated)'}
+            <div className="flex items-center gap-2 text-xs mb-1.5" style={{ color: '#15171C' }}>
+              <Check size={14} style={{ color: '#3a8d68' }} /> Demo only — nothing was uploaded
             </div>
-            <div className="mp-card mp-mono text-[13px] p-2 mb-2 break-all" style={{ background: 'rgba(21,23,28,0.04)', color: 'rgba(21,23,28,0.7)' }}>{resultUrl}</div>
-            {platform.id === 'mmf' && (
-              <p className="text-[12px] mb-2 leading-snug" style={{ color: 'rgba(21,23,28,0.55)' }}>MyMiniFactory test-prints before publishing, so it won't be live immediately.</p>
-            )}
+            <p className="text-[12px] mb-1.5 leading-snug" style={{ color: 'rgba(21,23,28,0.55)' }}>
+              This is what one-click {platform.id === 'mmf' ? 'submit (then MyMiniFactory test-prints before going live)' : 'publish'} will look like. Example URL it would produce:
+            </p>
+            <div className="mp-card mp-mono text-[13px] p-2 mb-2 break-all" style={{ background: 'rgba(21,23,28,0.04)', color: 'rgba(21,23,28,0.45)', textDecoration: 'line-through' }}>{resultUrl}</div>
             <button onClick={() => { setStatus('connected'); setStepMsg(''); }} className="mp-mono text-[12px] uppercase tracking-[0.2em] hover:text-[#FF5722] transition flex items-center gap-1">
-              <ArrowRight size={11} /> Publish again
+              <ArrowRight size={11} /> Run again
             </button>
           </>
         )}
@@ -3426,9 +3443,9 @@ function SectionHeader({ number, title, subtitle }) {
   );
 }
 
-function SectionNav({ backLabel, nextLabel, nextDisabled, onBack, onNext }) {
+function SectionNav({ backLabel, nextLabel, nextDisabled, onBack, onNext, disabledReason }) {
   return (
-    <div className="mt-10 pt-5 border-t flex items-center justify-between" style={{ borderColor: 'rgba(21,23,28,0.1)' }}>
+    <div className="mt-10 pt-5 border-t flex items-center justify-between gap-4" style={{ borderColor: 'rgba(21,23,28,0.1)' }}>
       <div>
         {backLabel && (
           <button onClick={onBack} className="mp-btn mp-btn-ghost text-xs">
@@ -3436,9 +3453,12 @@ function SectionNav({ backLabel, nextLabel, nextDisabled, onBack, onNext }) {
           </button>
         )}
       </div>
-      <div>
+      <div className="flex items-center gap-3 justify-end text-right">
+        {nextLabel && nextDisabled && disabledReason && (
+          <span className="mp-body text-[13px] leading-snug" style={{ color: 'rgba(21,23,28,0.55)' }}>{disabledReason}</span>
+        )}
         {nextLabel && (
-          <button onClick={onNext} disabled={nextDisabled} className="mp-btn">
+          <button onClick={onNext} disabled={nextDisabled} className="mp-btn flex-shrink-0">
             {nextLabel} <ArrowRight size={14} />
           </button>
         )}
