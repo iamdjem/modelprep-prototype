@@ -70,6 +70,30 @@ async function copyRichText(html, plain) {
   try { await navigator.clipboard.writeText(plain); return true; } catch (e) { return false; }
 }
 
+// Copy plain text to clipboard, returning true only on confirmed success. Falls
+// back to a hidden-textarea + execCommand for insecure contexts where the async
+// Clipboard API is unavailable.
+async function copyPlainText(text) {
+  const value = text || '';
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(value);
+      return true;
+    }
+  } catch (e) { /* fall through to legacy path */ }
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = value;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    const ok = document.execCommand('copy');
+    document.body.removeChild(ta);
+    return ok;
+  } catch (e) { return false; }
+}
+
 const PLATFORMS = [
   {
     id: 'makerworld', name: 'MakerWorld', org: 'Bambu Lab', dot: '#FF6900',
@@ -461,6 +485,7 @@ export default function App() {
   const [currentSection, setCurrentSection] = useState('files');
   const [templates, setTemplates] = useState([]);
   const [showTemplates, setShowTemplates] = useState(false);
+  const [dialog, setDialog] = useState(null); // styled prompt/confirm modal
 
   const updateProject = (patch) => setProject(p => ({ ...p, ...patch }));
 
@@ -504,23 +529,55 @@ export default function App() {
   const allReady = completion.files && completion.details && completion.images && completion.profiles && completion.platforms;
 
   const saveAsTemplate = () => {
-    const name = prompt('Template name?');
-    if (!name) return;
-    setTemplates(t => [...t, {
-      id: 't_' + Date.now(), name,
-      data: { description: project.description, category: project.category, tags: project.tags, license: project.license },
-    }]);
+    setShowTemplates(false);
+    setDialog({
+      kind: 'prompt',
+      title: 'Save as template',
+      message: 'Name this reusable template (Marjan’s “Sjabloon”) — it stores the description, category, tags and license.',
+      placeholder: 'e.g. Functional prints — CC BY-NC',
+      confirmLabel: 'Save template',
+      onConfirm: (name) => {
+        if (!name || !name.trim()) return;
+        setTemplates(t => [...t, {
+          id: 't_' + Date.now(), name: name.trim(),
+          data: { description: project.description, category: project.category, tags: project.tags, license: project.license },
+        }]);
+      },
+    });
   };
   const loadTemplate = (t) => {
-    updateProject({ description: t.data.description, category: t.data.category, tags: t.data.tags, license: t.data.license });
     setShowTemplates(false);
-  };
-  const newProject = () => {
-    if (project.files.length || project.title || project.description) {
-      if (!confirm('Discard current project and start fresh?')) return;
+    const apply = () => {
+      updateProject({ description: t.data.description, category: t.data.category, tags: t.data.tags, license: t.data.license });
+    };
+    // Warn before overwriting existing edits.
+    if (project.description || project.tags.length || project.category) {
+      setDialog({
+        kind: 'confirm',
+        title: 'Load template?',
+        message: `“${t.name}” will replace your current description, category, tags and license. Your files and images stay.`,
+        confirmLabel: 'Load template',
+        onConfirm: apply,
+      });
+    } else {
+      apply();
     }
-    setProject({ ...initialProject, name: 'Untitled Project' });
-    setCurrentSection('files');
+  };
+  const isDirty = () => project.files.length || project.images.length || project.title || project.description || project.tags.length || Object.values(project.platforms).some(p => p.enabled);
+  const newProject = () => {
+    const reset = () => { setProject({ ...initialProject, name: 'Untitled Project' }); setCurrentSection('files'); };
+    if (isDirty()) {
+      setDialog({
+        kind: 'confirm',
+        title: 'Start a new project?',
+        message: 'This clears everything — files, images, description and platform choices. This can’t be undone.',
+        confirmLabel: 'Discard & start fresh',
+        danger: true,
+        onConfirm: reset,
+      });
+    } else {
+      reset();
+    }
   };
 
   return (
@@ -581,6 +638,53 @@ export default function App() {
 
       <StatusBar project={project} completion={completion} currentSection={currentSection} />
       </div>
+
+      {dialog && <Modal dialog={dialog} onClose={() => setDialog(null)} />}
+    </div>
+  );
+}
+
+// Styled replacement for native alert/prompt/confirm. Keyboard: Enter confirms,
+// Escape cancels. Focus moves into the dialog on open.
+function Modal({ dialog, onClose }) {
+  const { kind, title, message, placeholder, confirmLabel = 'Confirm', danger } = dialog;
+  const [value, setValue] = useState('');
+  const inputRef = useRef(null);
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', onKey);
+    if (kind === 'prompt') setTimeout(() => inputRef.current?.focus(), 30);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [kind, onClose]);
+  const confirm = () => { dialog.onConfirm?.(kind === 'prompt' ? value : undefined); onClose(); };
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(21,23,28,0.55)' }} onMouseDown={onClose}>
+      <div className="mp-card w-full max-w-md p-5" style={{ background: '#EDE9DE' }} onMouseDown={(e) => e.stopPropagation()}>
+        <h3 className="mp-display text-[22px] leading-none mb-2">{title}</h3>
+        {message && <p className="mp-body text-sm mb-4" style={{ color: 'rgba(21,23,28,0.7)' }}>{message}</p>}
+        {kind === 'prompt' && (
+          <input
+            ref={inputRef}
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') confirm(); }}
+            placeholder={placeholder}
+            aria-label={title}
+            className="mp-input mb-4"
+          />
+        )}
+        <div className="flex justify-end gap-2">
+          <button onClick={onClose} className="mp-btn mp-btn-ghost text-[13px] py-2 px-3">Cancel</button>
+          <button
+            onClick={confirm}
+            disabled={kind === 'prompt' && !value.trim()}
+            className="mp-btn text-[13px] py-2 px-3 disabled:opacity-40"
+            style={danger ? { background: '#c83f10', borderColor: '#c83f10' } : undefined}
+          >
+            {confirmLabel}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -627,6 +731,23 @@ function GlobalStyles() {
   return (
     <style>{`
       @import url('https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@600;700;800;900&family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+
+      /* Design tokens — single source of truth for color & ink opacity.
+         Use var(--ink-65) etc. instead of ad-hoc rgba() in new code. */
+      :root {
+        --ink: #15171C;
+        --ink-65: rgba(21,23,28,0.65);  /* secondary text / subtitles */
+        --ink-50: rgba(21,23,28,0.5);   /* helper / caption */
+        --ink-35: rgba(21,23,28,0.35);  /* faint / placeholder */
+        --ink-04: rgba(21,23,28,0.04);  /* inset / code surface */
+        --paper: #EDE9DE;
+        --accent: #FF5722;              /* primary accent, focus, links */
+        --api: #3A86FF;                 /* API / demo CTAs + panels */
+        --success: #4FB286;
+        --success-text: #3a8d68;
+        --warn: #FFB627;
+        --danger-text: #c83f10;
+      }
 
       /* Industrial / workshop type system */
       .mp-display { font-family: 'Big Shoulders Display', 'Impact', sans-serif; font-weight: 800; letter-spacing: -0.005em; line-height: 0.95; text-transform: uppercase; }
@@ -703,6 +824,18 @@ function GlobalStyles() {
 
 function TopHeader({ project, updateProject, templates, showTemplates, setShowTemplates, onSaveTemplate, onLoadTemplate, onNewProject }) {
   const [editingName, setEditingName] = useState(false);
+  const templatesRef = useRef(null);
+
+  // Close the Templates menu on outside tap/click or Escape (works on touch).
+  useEffect(() => {
+    if (!showTemplates) return;
+    const onDoc = (e) => { if (templatesRef.current && !templatesRef.current.contains(e.target)) setShowTemplates(false); };
+    const onKey = (e) => { if (e.key === 'Escape') setShowTemplates(false); };
+    document.addEventListener('mousedown', onDoc);
+    document.addEventListener('keydown', onKey);
+    return () => { document.removeEventListener('mousedown', onDoc); document.removeEventListener('keydown', onKey); };
+  }, [showTemplates, setShowTemplates]);
+
   return (
     <header className="sticky top-0 z-20 border-b backdrop-blur" style={{ borderColor: 'rgba(21,23,28,0.1)', background: 'rgba(237,233,222,0.92)' }}>
       <div className="max-w-[1400px] mx-auto px-4 sm:px-6 py-3.5 flex items-center justify-between gap-4">
@@ -719,12 +852,13 @@ function TopHeader({ project, updateProject, templates, showTemplates, setShowTe
           <div className="min-w-0">
             <div className="flex items-baseline gap-2.5">
               <h1 className="mp-display text-[26px] leading-none">ModelPrep</h1>
-              <span className="mp-mono text-[11px] uppercase tracking-[0.2em]" style={{ color: 'rgba(21,23,28,0.45)' }}>v0.3 · build 04</span>
+              <span className="hidden sm:inline mp-mono text-[11px] uppercase tracking-[0.2em]" style={{ color: 'rgba(21,23,28,0.45)' }}>v0.3 · build 04</span>
             </div>
             <div className="flex items-center gap-1.5 mt-1">
               {editingName ? (
                 <input
                   autoFocus
+                  aria-label="Project name"
                   value={project.name}
                   onChange={(e) => updateProject({ name: e.target.value })}
                   onBlur={() => setEditingName(false)}
@@ -747,15 +881,15 @@ function TopHeader({ project, updateProject, templates, showTemplates, setShowTe
         </div>
 
         <div className="flex items-center gap-2">
-          <div className="relative">
-            <button onClick={() => setShowTemplates(s => !s)} className="mp-btn mp-btn-ghost text-xs py-2 px-3">
+          <div className="relative" ref={templatesRef}>
+            <button onClick={() => setShowTemplates(s => !s)} className="mp-btn mp-btn-ghost text-xs py-2 px-3" aria-haspopup="true" aria-expanded={showTemplates}>
               <Bookmark size={13} /> Templates
               {templates.length > 0 && (
                 <span className="ml-1 mp-mono text-[12px]" style={{ color: '#FF5722' }}>{templates.length}</span>
               )}
             </button>
             {showTemplates && (
-              <div className="absolute right-0 top-full mt-1 w-72 mp-card z-30" onMouseLeave={() => setShowTemplates(false)}>
+              <div className="absolute right-0 top-full mt-1 w-72 max-w-[calc(100vw-2rem)] mp-card z-30">
                 <div className="px-3 py-2 border-b" style={{ borderColor: 'rgba(21,23,28,0.1)' }}>
                   <button onClick={() => { onSaveTemplate(); setShowTemplates(false); }} className="w-full text-left text-xs flex items-center gap-2 py-1" style={{ color: '#FF5722' }}>
                     <Save size={12} /> Save current as template
@@ -806,6 +940,8 @@ function Sidebar({ currentSection, setCurrentSection, completion }) {
             <button
               key={s.id}
               onClick={() => setCurrentSection(s.id)}
+              aria-current={active ? 'step' : undefined}
+              aria-label={`Step ${i + 1}: ${s.label}${done ? ' (complete)' : ''}`}
               className="flex-shrink-0 w-[210px] lg:w-full text-left p-3 mb-0.5 flex items-start gap-3 transition-colors group relative"
               style={{
                 background: active ? '#15171C' : 'transparent',
@@ -855,9 +991,21 @@ const MAX_BUILD_FILE_MB = 500;
 
 function isImageFile(name) { return ['png', 'jpg', 'jpeg', 'webp', 'gif'].includes(fileExt(name)); }
 
+// Make `name` unique against a Set of taken (lowercased) names by suffixing
+// "-2", "-3", … before the extension. Prevents silent collisions in the zip.
+function uniqueFileName(name, taken) {
+  if (!taken.has(name.toLowerCase())) return name;
+  const ext = name.includes('.') ? name.slice(name.lastIndexOf('.')) : '';
+  const base = ext ? name.slice(0, -ext.length) : name;
+  let n = 2;
+  let candidate;
+  do { candidate = `${base}-${n}${ext}`; n++; } while (taken.has(candidate.toLowerCase()));
+  return candidate;
+}
+
 function FilesSection({ project, updateProject, setCurrentSection }) {
   const fileInputRef = useRef(null);
-  const [notice, setNotice] = useState(null); // { kind: 'image' | 'toobig', detail }
+  const [notice, setNotice] = useState(null); // { kind: 'image' | 'toobig' | 'renamed', detail }
 
   const handleFiles = (fileList) => {
     const arr = Array.from(fileList);
@@ -867,19 +1015,29 @@ function FilesSection({ project, updateProject, setCurrentSection }) {
     const tooBig = supported.filter(f => f.size / 1024 / 1024 > MAX_BUILD_FILE_MB);
     const withinLimit = supported.filter(f => f.size / 1024 / 1024 <= MAX_BUILD_FILE_MB);
 
-    const additions = withinLimit.map(f => ({
-      id: 'f_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
-      name: f.name,
-      size: f.size,
-      type: f.type,
-      isModel: isModelFile(f.name),
-      isProfile: isProfile(f.name),
-      isImage: isImageFile(f.name),
-      blob: f,  // keep the actual File so we can include it in ZIP exports
-    }));
+    // De-duplicate names against existing files and within this batch.
+    const taken = new Set(project.files.map(f => f.name.toLowerCase()));
+    const renamed = [];
+    const additions = withinLimit.map(f => {
+      const name = uniqueFileName(f.name, taken);
+      taken.add(name.toLowerCase());
+      if (name !== f.name) renamed.push(`${f.name} → ${name}`);
+      return {
+        id: 'f_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
+        name,
+        size: f.size,
+        type: f.type,
+        isModel: isModelFile(f.name),
+        isProfile: isProfile(f.name),
+        isImage: isImageFile(f.name),
+        blob: f,  // keep the actual File so we can include it in ZIP exports
+      };
+    });
 
     if (tooBig.length) {
       setNotice({ kind: 'toobig', detail: tooBig.map(f => `${f.name} (${formatBytes(f.size)})`).join(', ') });
+    } else if (renamed.length) {
+      setNotice({ kind: 'renamed', detail: renamed.join(', ') });
     } else if (additions.some(a => a.isImage)) {
       // #3 — images are accepted as reference files, but gallery photos belong in step 03.
       setNotice({ kind: 'image', detail: null });
@@ -888,7 +1046,7 @@ function FilesSection({ project, updateProject, setCurrentSection }) {
     }
 
     if (additions.length === 0) {
-      if (!tooBig.length) alert('No supported files in your drop. Try .stl, .3mf, .obj, .step, or .amf.');
+      if (!tooBig.length) setNotice({ kind: 'unsupported', detail: null });
       return;
     }
     updateProject({ files: [...project.files, ...additions] });
@@ -896,9 +1054,12 @@ function FilesSection({ project, updateProject, setCurrentSection }) {
 
   const removeFile = (id) => updateProject({ files: project.files.filter(f => f.id !== id) });
 
-  const renameFile = (id, newName) => updateProject({
-    files: project.files.map(f => f.id === id ? { ...f, name: newName } : f),
-  });
+  const renameFile = (id, newName) => {
+    // Don't let a rename collide with another file's name.
+    const taken = new Set(project.files.filter(f => f.id !== id).map(f => f.name.toLowerCase()));
+    const finalName = uniqueFileName(newName, taken);
+    updateProject({ files: project.files.map(f => f.id === id ? { ...f, name: finalName } : f) });
+  };
 
   const totalSize = project.files.reduce((s, f) => s + f.size, 0);
 
@@ -911,10 +1072,14 @@ function FilesSection({ project, updateProject, setCurrentSection }) {
       />
 
       <div
-        className="mp-blueprint border-2 border-dashed py-16 px-6 text-center cursor-pointer transition-colors mt-6"
+        role="button"
+        tabIndex={0}
+        aria-label="Upload build files — drop here or press Enter to browse"
+        className="mp-blueprint border-2 border-dashed py-16 px-6 text-center cursor-pointer transition-colors mt-6 focus:outline-none focus-visible:border-[#FF5722]"
         style={{ borderColor: 'rgba(21,23,28,0.25)' }}
         onMouseEnter={(e) => e.currentTarget.style.borderColor = '#FF5722'}
         onMouseLeave={(e) => e.currentTarget.style.borderColor = 'rgba(21,23,28,0.25)'}
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fileInputRef.current?.click(); } }}
         onDragOver={(e) => e.preventDefault()}
         onDrop={(e) => { e.preventDefault(); handleFiles(e.dataTransfer.files); }}
         onClick={() => fileInputRef.current?.click()}
@@ -950,6 +1115,20 @@ function FilesSection({ project, updateProject, setCurrentSection }) {
                   {notice.detail} exceeds the {MAX_BUILD_FILE_MB}MB per-file ceiling that platforms accept. Decimate the mesh or split it before uploading.
                 </div>
               </>
+            ) : notice.kind === 'unsupported' ? (
+              <>
+                <div className="mp-display font-bold mb-1">Nothing added — unsupported files</div>
+                <div style={{ color: 'rgba(21,23,28,0.7)' }}>
+                  None of those files are supported here. Try <strong>.stl, .3mf, .obj, .step, .amf</strong> (or .pdf / .zip extras).
+                </div>
+              </>
+            ) : notice.kind === 'renamed' ? (
+              <>
+                <div className="mp-display font-bold mb-1">Renamed to avoid a duplicate</div>
+                <div style={{ color: 'rgba(21,23,28,0.7)' }}>
+                  A file with that name was already added, so we renamed it: {notice.detail}. (Same-named files would otherwise overwrite each other in the upload package.)
+                </div>
+              </>
             ) : (
               <>
                 <div className="mp-display font-bold mb-1">Added an image as a build file</div>
@@ -959,7 +1138,7 @@ function FilesSection({ project, updateProject, setCurrentSection }) {
               </>
             )}
           </div>
-          <button onClick={() => setNotice(null)} className="p-0.5 opacity-50 hover:opacity-100 transition" aria-label="Dismiss"><X size={13} /></button>
+          <button onClick={() => setNotice(null)} className="p-2 -m-1 opacity-50 hover:opacity-100 transition" aria-label="Dismiss notice"><X size={14} /></button>
         </div>
       )}
 
@@ -1018,6 +1197,7 @@ function FileRow({ file, onRemove, onRename }) {
           <div className="flex items-center gap-1">
             <input
               autoFocus
+              aria-label="New file name"
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
               onBlur={commit}
@@ -1049,23 +1229,36 @@ function FileRow({ file, onRemove, onRename }) {
           )}
         </div>
       </div>
-      <button onClick={startEdit} className="p-1.5 opacity-40 hover:opacity-100 transition" aria-label="Rename file">
-        <Edit3 size={14} />
+      <button onClick={startEdit} className="p-2.5 opacity-60 hover:opacity-100 hover:text-[#FF5722] transition" aria-label="Rename file" title="Rename">
+        <Edit3 size={15} />
       </button>
-      <button onClick={onRemove} className="p-1.5 opacity-40 hover:opacity-100 transition" aria-label="Remove file">
-        <Trash2 size={14} />
+      <button onClick={onRemove} className="p-2.5 opacity-60 hover:opacity-100 hover:text-[#FF5722] transition" aria-label="Remove file" title="Remove">
+        <Trash2 size={15} />
       </button>
     </div>
   );
 }
 
+// Common per-file cap across most platforms (Cults, MMF, Thingiverse, Thangs,
+// Nexprint, Creality). MakerWorld allows 150MB/profile + 250MB total; Printables
+// is far higher. We warn early so testers don't download packages that get rejected.
+const COMMON_FILE_MB = 100;
+
 function FileSizeWarnings({ files, totalSize }) {
-  const totalMb = totalSize / 1024 / 1024;
+  const mb = (b) => b / 1024 / 1024;
+  const totalMb = mb(totalSize);
   const warnings = [];
+  // Per-file: flag anything most platforms will reject.
+  files.forEach(f => {
+    const fm = mb(f.size);
+    if (fm > COMMON_FILE_MB) {
+      warnings.push({ platform: 'Most platforms', limit: `${COMMON_FILE_MB}MB per file`, current: `${fm.toFixed(0)}MB (${f.name})` });
+    }
+  });
   if (totalMb > 250) warnings.push({ platform: 'MakerWorld', limit: '250MB total', current: `${totalMb.toFixed(0)}MB` });
   files.filter(f => f.isProfile).forEach(f => {
-    if (f.size / 1024 / 1024 > 150) {
-      warnings.push({ platform: 'MakerWorld', limit: '150MB per profile', current: `${(f.size / 1024 / 1024).toFixed(0)}MB (${f.name})` });
+    if (mb(f.size) > 150) {
+      warnings.push({ platform: 'MakerWorld', limit: '150MB per profile', current: `${mb(f.size).toFixed(0)}MB (${f.name})` });
     }
   });
   if (warnings.length === 0) return null;
@@ -1139,6 +1332,7 @@ function CategorySelect({ value, onChange, options }) {
               autoFocus
               value={query}
               onChange={(e) => setQuery(e.target.value)}
+              aria-label="Search categories"
               placeholder="Search categories…"
               className="bg-transparent outline-none text-xs flex-1"
             />
@@ -1152,7 +1346,7 @@ function CategorySelect({ value, onChange, options }) {
                 key={o}
                 type="button"
                 onClick={() => { onChange(o); setOpen(false); }}
-                className="w-full text-left px-3 py-1.5 text-xs hover:bg-[rgba(255,87,34,0.08)] transition flex items-center justify-between"
+                className="w-full text-left px-3 py-2.5 text-xs hover:bg-[rgba(255,87,34,0.08)] transition flex items-center justify-between"
                 style={{ background: value === o ? 'rgba(255,87,34,0.06)' : 'transparent' }}
               >
                 <span>{o}</span>
@@ -1290,12 +1484,13 @@ function DetailsSection({ project, updateProject, setCurrentSection }) {
             <div className="mp-card p-3">
               <div className="flex flex-wrap gap-1.5 mb-2">
                 {project.tags.map(t => (
-                  <span key={t} className="inline-flex items-center gap-1 px-2 py-1 mp-mono text-[12px] uppercase tracking-[0.15em]" style={{ background: '#15171C', color: '#EDE9DE' }}>
+                  <span key={t} className="inline-flex items-center gap-0.5 pl-2 pr-0.5 py-1 mp-mono text-[12px] uppercase tracking-[0.15em]" style={{ background: '#15171C', color: '#EDE9DE' }}>
                     {t}
-                    <button onClick={() => removeTag(t)} className="opacity-60 hover:opacity-100 transition"><X size={10} /></button>
+                    <button onClick={() => removeTag(t)} className="p-1.5 opacity-70 hover:opacity-100 hover:text-[#FF5722] transition" aria-label={`Remove tag ${t}`}><X size={13} /></button>
                   </span>
                 ))}
                 <input
+                  aria-label="Add a tag"
                   value={tagInput}
                   onChange={(e) => setTagInput(e.target.value)}
                   onKeyDown={handleTagKey}
@@ -1385,14 +1580,13 @@ function Label({ children, className = '' }) {
 
 function FormatTabs({ description }) {
   const [active, setActive] = useState('md');
-  const [copied, setCopied] = useState(null);
+  const [copied, setCopied] = useState(null); // null | 'ok' | 'fail'
   const html = mdToHtml(description);
   const plain = mdToPlain(description);
   const outputs = { md: description, rich: html, html, plain };
   const copy = async (k) => {
-    if (k === 'rich') { const ok = await copyRichText(html, plain); if (!ok) return; }
-    else { navigator.clipboard.writeText(outputs[k]); }
-    setCopied(k); setTimeout(() => setCopied(null), 1500);
+    const ok = k === 'rich' ? await copyRichText(html, plain) : await copyPlainText(outputs[k]);
+    setCopied(ok ? 'ok' : 'fail'); setTimeout(() => setCopied(null), 1600);
   };
   const tabs = [
     { k: 'md',    label: 'Markdown',  platforms: ['Printables', 'Cults3D', 'Nexprint'] },
@@ -1426,8 +1620,8 @@ function FormatTabs({ description }) {
         <span className="mp-mono text-[11px] uppercase tracking-[0.15em]" style={{ color: 'rgba(21,23,28,0.45)' }}>
           {active === 'rich' ? 'Rendered — paste into the visual editor, keeps formatting' : active === 'html' ? 'Raw HTML source' : active === 'md' ? 'Markdown source' : 'Plain text'}
         </span>
-        <button onClick={() => copy(active)} className="mp-mono text-[12px] uppercase tracking-[0.2em] flex items-center gap-1.5 hover:text-[#FF5722] transition flex-shrink-0">
-          {copied === active ? <><Check size={11} /> Copied</> : <><Copy size={11} /> {copyLabel}</>}
+        <button onClick={() => copy(active)} className="mp-mono text-[12px] uppercase tracking-[0.2em] flex items-center gap-1.5 hover:text-[#FF5722] transition flex-shrink-0 py-1" aria-label={copyLabel}>
+          {copied === 'ok' ? <><Check size={13} style={{ color: '#4FB286' }} /> Copied</> : copied === 'fail' ? <><X size={13} style={{ color: '#c83f10' }} /> Select &amp; copy</> : <><Copy size={12} /> {copyLabel}</>}
         </button>
       </div>
       {active === 'rich' ? (
@@ -1450,29 +1644,53 @@ function ImagesSection({ project, updateProject, setCurrentSection }) {
   const fileInputRef = useRef(null);
   const [activeImageId, setActiveImageId] = useState(null);
   const [showPlatformPreviews, setShowPlatformPreviews] = useState(true);
+  const [imgNotice, setImgNotice] = useState(null); // string | null
 
   const handleImageFiles = async (fileList) => {
-    const arr = Array.from(fileList).filter(f => f.type.startsWith('image/'));
+    const all = Array.from(fileList);
+    // Accept by MIME, but fall back to extension when the browser reports no type
+    // (drag from some sources, HEIC, renamed files, etc.).
+    const candidates = all.filter(f => f.type.startsWith('image/') || isImageFile(f.name));
+    const rejectedType = all.length - candidates.length;
     const additions = [];
-    for (const file of arr) {
+    let failed = 0;
+    for (const file of candidates) {
       const dataUrl = await new Promise((resolve) => {
         const reader = new FileReader();
         reader.onload = (e) => resolve(e.target.result);
-        reader.readAsDataURL(file);
+        reader.onerror = () => resolve(null);
+        try { reader.readAsDataURL(file); } catch (e) { resolve(null); }
       });
+      if (!dataUrl) { failed++; continue; }
       try {
         const img = await loadImageFromDataUrl(dataUrl);
         additions.push({
-          id: 'img_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
+          id: 'img_' + Date.now() + '_' + additions.length + '_' + Math.random().toString(36).slice(2, 7),
           dataUrl,
           naturalW: img.naturalWidth,
           naturalH: img.naturalHeight,
           focal: { x: 0.5, y: 0.5 },
           alt: file.name.replace(/\.[^.]+$/, ''),
         });
-      } catch (e) { /* skip */ }
+      } catch (e) { failed++; }
     }
-    if (!additions.length) return;
+
+    // Surface what happened so a drop never silently does nothing.
+    if (!additions.length) {
+      if (rejectedType && !failed) setImgNotice("Those files aren't recognized as images. Use JPG, PNG, WebP or GIF.");
+      else if (failed) setImgNotice(`Couldn't read ${failed} file${failed === 1 ? '' : 's'} — it may be corrupt or an unsupported format.`);
+      else setImgNotice('No images found in that drop.');
+      return;
+    }
+    if (failed || rejectedType) {
+      const parts = [];
+      if (failed) parts.push(`${failed} couldn't be read`);
+      if (rejectedType) parts.push(`${rejectedType} weren't images`);
+      setImgNotice(`Added ${additions.length}. Skipped ${parts.join(' and ')}.`);
+    } else {
+      setImgNotice(null);
+    }
+
     const newImages = [...project.images, ...additions];
     const patch = { images: newImages };
     if (!project.coverImageId && newImages.length) patch.coverImageId = newImages[0].id;
@@ -1480,24 +1698,31 @@ function ImagesSection({ project, updateProject, setCurrentSection }) {
     if (!activeImageId) setActiveImageId(additions[0].id);
   };
 
-  const addSample = async (label, tint) => {
-    const dataUrl = makeSampleImage(label, tint);
-    const img = await loadImageFromDataUrl(dataUrl);
-    const newImg = {
-      id: 'img_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
-      dataUrl, naturalW: img.naturalWidth, naturalH: img.naturalHeight, focal: { x: 0.5, y: 0.5 }, alt: 'Sample',
-    };
-    const newImages = [...project.images, newImg];
+  const addSamples = async (specs) => {
+    // Build every sample first, then commit in ONE update so they don't race.
+    const built = await Promise.all(specs.map(async ({ label, tint }, i) => {
+      const dataUrl = makeSampleImage(label, tint);
+      const img = await loadImageFromDataUrl(dataUrl);
+      return {
+        id: 'img_' + Date.now() + '_' + i + '_' + Math.random().toString(36).slice(2, 7),
+        dataUrl, naturalW: img.naturalWidth, naturalH: img.naturalHeight, focal: { x: 0.5, y: 0.5 }, alt: `Sample ${i + 1}`,
+      };
+    }));
+    const newImages = [...project.images, ...built];
     const patch = { images: newImages };
-    if (!project.coverImageId) patch.coverImageId = newImg.id;
+    if (!project.coverImageId && built.length) patch.coverImageId = built[0].id;
     updateProject(patch);
-    if (!activeImageId) setActiveImageId(newImg.id);
+    if (!activeImageId && built.length) setActiveImageId(built[0].id);
   };
 
   const removeImage = (id) => {
     const next = project.images.filter(i => i.id !== id);
     const patch = { images: next };
     if (project.coverImageId === id) patch.coverImageId = next[0]?.id || null;
+    // Clear any per-profile cover that pointed at the removed image (avoid dangling refs).
+    if (project.profiles?.some(p => p.coverImageId === id)) {
+      patch.profiles = project.profiles.map(p => p.coverImageId === id ? { ...p, coverImageId: null, useMainCover: true } : p);
+    }
     updateProject(patch);
     if (activeImageId === id) setActiveImageId(next[0]?.id || null);
   };
@@ -1527,15 +1752,23 @@ function ImagesSection({ project, updateProject, setCurrentSection }) {
         subtitle={<>Drop images, set the focal point so every platform's crop keeps what matters in frame.<br />Up to 16 for MakerWorld; most platforms cap at 10-25.</>}
       />
 
+      {imgNotice && (
+        <div className="mt-4 p-3 flex items-start gap-3" style={{ background: 'rgba(255,87,34,0.08)', border: '1px solid rgba(255,87,34,0.3)' }}>
+          <AlertCircle size={16} style={{ color: '#FF5722' }} className="flex-shrink-0 mt-0.5" />
+          <div className="text-xs flex-1" style={{ color: 'rgba(21,23,28,0.7)' }}>{imgNotice}</div>
+          <button onClick={() => setImgNotice(null)} className="p-2 -m-1 opacity-50 hover:opacity-100 transition" aria-label="Dismiss notice"><X size={14} /></button>
+        </div>
+      )}
+
       {project.images.length === 0 ? (
         <ImageDropZone
           onDrop={handleImageFiles}
           inputRef={fileInputRef}
-          onSamples={() => {
-            addSample('SAMPLE 1', ['#FF5722', '#FFB627', '#1A1A1A']);
-            setTimeout(() => addSample('SAMPLE 2', ['#3A86FF', '#4FB286', '#1A1A1A']), 100);
-            setTimeout(() => addSample('SAMPLE 3', ['#FF6900', '#F79E2E', '#1A1A1A']), 200);
-          }}
+          onSamples={() => addSamples([
+            { label: 'SAMPLE 1', tint: ['#FF5722', '#FFB627', '#1A1A1A'] },
+            { label: 'SAMPLE 2', tint: ['#3A86FF', '#4FB286', '#1A1A1A'] },
+            { label: 'SAMPLE 3', tint: ['#FF6900', '#F79E2E', '#1A1A1A'] },
+          ])}
         />
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 mt-6">
@@ -1588,20 +1821,20 @@ function ImagesSection({ project, updateProject, setCurrentSection }) {
                       <button
                         onClick={() => moveImage(img.id, -1)}
                         disabled={idx === 0}
-                        aria-label="Move up"
-                        className="p-0.5 transition disabled:opacity-20 disabled:cursor-not-allowed hover:text-[#FF5722]"
+                        aria-label={`Move ${img.alt || 'image'} up`}
+                        className="p-2 transition disabled:opacity-20 disabled:cursor-not-allowed hover:text-[#FF5722]"
                         style={{ color: 'inherit' }}
                       >
-                        <ChevronUp size={14} />
+                        <ChevronUp size={16} />
                       </button>
                       <button
                         onClick={() => moveImage(img.id, 1)}
                         disabled={idx === project.images.length - 1}
-                        aria-label="Move down"
-                        className="p-0.5 transition disabled:opacity-20 disabled:cursor-not-allowed hover:text-[#FF5722]"
+                        aria-label={`Move ${img.alt || 'image'} down`}
+                        className="p-2 transition disabled:opacity-20 disabled:cursor-not-allowed hover:text-[#FF5722]"
                         style={{ color: 'inherit' }}
                       >
-                        <ChevronDown size={14} />
+                        <ChevronDown size={16} />
                       </button>
                     </div>
                   </div>
@@ -1624,15 +1857,15 @@ function ImagesSection({ project, updateProject, setCurrentSection }) {
                     Image · {activeImage.naturalW} × {activeImage.naturalH} · drag the dot to set focal point
                   </span>
                   <div className="flex items-center gap-2">
-                    <button onClick={() => setAsCover(activeImage.id)} className="mp-mono text-[12px] uppercase tracking-[0.15em] py-1.5 px-2.5 flex items-center gap-1.5 transition" style={{
+                    <button onClick={() => setAsCover(activeImage.id)} aria-pressed={project.coverImageId === activeImage.id} className="mp-mono text-[12px] uppercase tracking-[0.15em] min-h-[40px] py-2 px-3 flex items-center gap-1.5 transition" style={{
                       background: project.coverImageId === activeImage.id ? '#FF5722' : '#15171C',
                       color: '#EDE9DE',
                     }}>
-                      <Star size={11} fill={project.coverImageId === activeImage.id ? '#fff' : 'none'} />
+                      <Star size={12} fill={project.coverImageId === activeImage.id ? '#fff' : 'none'} />
                       {project.coverImageId === activeImage.id ? 'Cover' : 'Set as cover'}
                     </button>
-                    <button onClick={() => removeImage(activeImage.id)} className="p-1.5 hover:text-[#FF5722] transition opacity-60 hover:opacity-100">
-                      <Trash2 size={14} />
+                    <button onClick={() => removeImage(activeImage.id)} aria-label="Delete this image" title="Delete image" className="p-2.5 hover:text-[#FF5722] transition opacity-60 hover:opacity-100">
+                      <Trash2 size={16} />
                     </button>
                   </div>
                 </div>
@@ -1679,10 +1912,14 @@ function ImageDropZone({ onDrop, inputRef, onSamples }) {
   return (
     <>
       <div
-        className="mp-blueprint border-2 border-dashed py-16 px-6 text-center cursor-pointer transition-colors mt-6"
+        role="button"
+        tabIndex={0}
+        aria-label="Upload images — drop here or press Enter to browse"
+        className="mp-blueprint border-2 border-dashed py-16 px-6 text-center cursor-pointer transition-colors mt-6 focus:outline-none focus-visible:border-[#FF5722]"
         style={{ borderColor: 'rgba(21,23,28,0.25)' }}
         onMouseEnter={(e) => e.currentTarget.style.borderColor = '#FF5722'}
         onMouseLeave={(e) => e.currentTarget.style.borderColor = 'rgba(21,23,28,0.25)'}
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); inputRef.current?.click(); } }}
         onDragOver={(e) => e.preventDefault()}
         onDrop={(e) => { e.preventDefault(); onDrop(e.dataTransfer.files); }}
         onClick={() => inputRef.current?.click()}
@@ -1722,13 +1959,13 @@ function FocalPicker({ image, onUpdate }) {
     <div className="relative w-full select-none" style={{ background: '#15171C', textAlign: 'center' }}>
       <div
         className="relative inline-block cursor-crosshair"
-        style={{ maxWidth: '100%', verticalAlign: 'top' }}
+        style={{ maxWidth: '100%', verticalAlign: 'top', touchAction: 'none' }}
         onMouseDown={(e) => { setDragging(true); move(e); }}
         onMouseMove={(e) => dragging && move(e)}
         onMouseUp={() => setDragging(false)}
         onMouseLeave={() => setDragging(false)}
         onTouchStart={(e) => { setDragging(true); move(e); }}
-        onTouchMove={(e) => dragging && move(e)}
+        onTouchMove={(e) => { if (dragging) { e.preventDefault(); move(e); } }}
         onTouchEnd={() => setDragging(false)}
       >
         <img ref={imgRef} src={image.dataUrl} alt="" draggable={false} style={{ display: 'block', maxWidth: '100%', maxHeight: '55vh', userSelect: 'none' }} />
@@ -2025,13 +2262,21 @@ function PlatformCard({ platform, state, onToggle, onUpdate }) {
   return (
     <div className="mp-card" style={{ borderColor: state.enabled ? 'rgba(21,23,28,0.2)' : 'rgba(21,23,28,0.08)', opacity: state.enabled ? 1 : 0.65 }}>
       <div className="p-3.5 flex items-start gap-3">
-        <button onClick={onToggle} className="flex-shrink-0 mt-0.5 mp-mono text-[12px] uppercase tracking-[0.15em] px-2.5 py-1.5 transition" style={{
-          background: state.enabled ? '#FF5722' : 'transparent',
-          color: state.enabled ? '#fff' : 'rgba(21,23,28,0.5)',
-          border: `1px solid ${state.enabled ? '#FF5722' : 'rgba(21,23,28,0.2)'}`,
-          minWidth: 52,
-        }}>
-          {state.enabled ? '▣ ON' : '▢ OFF'}
+        <button
+          onClick={onToggle}
+          role="switch"
+          aria-checked={state.enabled}
+          aria-label={`${state.enabled ? 'Disable' : 'Enable'} ${platform.name}`}
+          className="flex-shrink-0 mt-0.5 mp-mono text-[12px] uppercase tracking-[0.15em] px-2.5 min-h-[40px] flex items-center justify-center gap-1.5 transition"
+          style={{
+            background: state.enabled ? '#FF5722' : 'transparent',
+            color: state.enabled ? '#fff' : 'rgba(21,23,28,0.5)',
+            border: `1px solid ${state.enabled ? '#FF5722' : 'rgba(21,23,28,0.25)'}`,
+            minWidth: 58,
+          }}
+        >
+          {state.enabled ? <Check size={13} strokeWidth={3} /> : <X size={13} strokeWidth={3} />}
+          {state.enabled ? 'ON' : 'OFF'}
         </button>
         <div className="flex-1 min-w-0">
           <div className="flex items-center justify-between gap-2">
@@ -2039,23 +2284,17 @@ function PlatformCard({ platform, state, onToggle, onUpdate }) {
               <div className="w-2 h-2 flex-shrink-0" style={{ background: platform.dot }} />
               <h3 className="mp-display font-bold text-base">{platform.name}</h3>
               {platform.apiSupport === 'oneclick' && (
-                <span className="mp-mono text-[11px] uppercase tracking-[0.15em] px-1.5 py-0.5 rounded" style={{ background: '#4FB286', color: '#fff' }}>
-                  API
-                </span>
+                <span className="mp-pill" style={{ background: '#4FB286', color: '#fff' }}>API</span>
               )}
               {platform.apiSupport === 'manual' && (
-                <span className="mp-mono text-[11px] uppercase tracking-[0.15em] px-1.5 py-0.5 rounded" style={{ background: 'rgba(21,23,28,0.1)', color: 'rgba(21,23,28,0.6)' }}>
-                  manual
-                </span>
+                <span className="mp-pill" style={{ background: 'rgba(21,23,28,0.1)', color: 'rgba(21,23,28,0.6)' }}>manual</span>
               )}
               {platform.apiSupport === 'addon' && (
-                <span className="mp-mono text-[11px] uppercase tracking-[0.15em] px-1.5 py-0.5 rounded" style={{ background: 'rgba(58,134,255,0.15)', color: '#3A86FF' }}>
-                  addon
-                </span>
+                <span className="mp-pill" style={{ background: 'rgba(58,134,255,0.15)', color: '#3A86FF' }}>addon</span>
               )}
             </div>
-            <button onClick={() => setExpanded(s => !s)} className="text-[12px] opacity-50 hover:opacity-100 transition flex-shrink-0">
-              {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+            <button onClick={() => setExpanded(s => !s)} className="p-2 opacity-50 hover:opacity-100 transition flex-shrink-0" aria-label={expanded ? 'Collapse platform options' : 'Expand platform options'} aria-expanded={expanded}>
+              {expanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
             </button>
           </div>
           <div className="mp-mono text-[12px] uppercase tracking-[0.15em] mt-0.5" style={{ color: 'rgba(21,23,28,0.55)' }}>
@@ -2544,31 +2783,36 @@ function PlatformPackageCard({ platform, project, cover, platformState }) {
   return (
     <div className="mp-card">
       {/* Header row */}
-      <div className="p-4 flex items-start gap-3 border-b" style={{ borderColor: 'rgba(21,23,28,0.08)' }}>
-        <div className="w-2.5 h-2.5 mt-1.5 flex-shrink-0" style={{ background: platform.dot }} />
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <h3 className="mp-display text-[22px] leading-none">{platform.name}</h3>
-            {platform.apiSupport === 'oneclick' && (
-              <span className="mp-pill" style={{ background: '#4FB286', color: '#fff' }}>API soon</span>
-            )}
-            {platform.apiSupport === 'manual' && (
-              <span className="mp-pill" style={{ background: 'rgba(21,23,28,0.1)', color: 'rgba(21,23,28,0.6)' }}>manual</span>
-            )}
-            {platform.apiSupport === 'addon' && (
-              <span className="mp-pill" style={{ background: 'rgba(58,134,255,0.15)', color: '#3A86FF' }}>addon</span>
-            )}
+      <div className="p-4 flex flex-col gap-3 border-b sm:flex-row sm:items-start" style={{ borderColor: 'rgba(21,23,28,0.08)' }}>
+        <div className="flex items-start gap-3 flex-1 min-w-0">
+          <div className="w-2.5 h-2.5 mt-1.5 flex-shrink-0" style={{ background: platform.dot }} />
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <h3 className="mp-display text-[22px] leading-none">{platform.name}</h3>
+              {platform.apiSupport === 'oneclick' && (
+                <span className="mp-pill" style={{ background: '#4FB286', color: '#fff' }}>API soon</span>
+              )}
+              {platform.apiSupport === 'manual' && (
+                <span className="mp-pill" style={{ background: 'rgba(21,23,28,0.1)', color: 'rgba(21,23,28,0.6)' }}>manual</span>
+              )}
+              {platform.apiSupport === 'addon' && (
+                <span className="mp-pill" style={{ background: 'rgba(58,134,255,0.15)', color: '#3A86FF' }}>addon</span>
+              )}
+            </div>
+            <div className="mp-mono text-[12px] uppercase tracking-[0.15em] mt-1" style={{ color: 'rgba(21,23,28,0.55)' }}>
+              {platform.org} · {platform.descFormat} description · {platform.maxImages} img max
+            </div>
           </div>
-          <div className="mp-mono text-[12px] uppercase tracking-[0.15em] mt-1" style={{ color: 'rgba(21,23,28,0.55)' }}>
-            {platform.org} · {platform.descFormat} description · {platform.maxImages} img max
-          </div>
+          <button onClick={() => setExpanded(s => !s)} className="p-2 opacity-60 hover:opacity-100 transition flex-shrink-0 sm:hidden" aria-label={expanded ? 'Collapse package' : 'Expand package'} aria-expanded={expanded}>
+            {expanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+          </button>
         </div>
 
-        <div className="flex items-center gap-2 flex-wrap justify-end">
+        <div className="flex items-center gap-2 flex-wrap sm:justify-end">
           {platform.hasApi && (
             <button
               onClick={() => { setExpanded(true); setUploadSignal(n => n + 1); }}
-              className="mp-btn text-[13px] py-2 px-3"
+              className="mp-btn text-[13px] py-2 px-3 flex-1 sm:flex-none"
               style={{ background: '#3A86FF', borderColor: '#3A86FF' }}
               title="Preview one-click upload (demo)"
             >
@@ -2578,20 +2822,20 @@ function PlatformPackageCard({ platform, project, cover, platformState }) {
           <button
             onClick={downloadEverything}
             disabled={downloading || !cover}
-            className="mp-btn mp-btn-ghost text-[13px] py-2 px-3 disabled:opacity-40"
+            className="mp-btn mp-btn-ghost text-[13px] py-2 px-3 disabled:opacity-40 flex-1 sm:flex-none sm:min-w-[140px]"
             title={!cover ? 'Add at least one image first' : 'Download a ZIP containing everything for this platform'}
           >
             {downloading ? (
-              <><Loader size={12} className="mp-spin" /> <span className="mp-mono text-[13px] normal-case tracking-normal" style={{ fontFamily: "'JetBrains Mono', monospace" }}>{progressMsg || 'Working'}</span></>
+              <><Loader size={12} className="mp-spin" /> <span className="mp-mono text-[13px] normal-case tracking-normal truncate" style={{ fontFamily: "'JetBrains Mono', monospace" }}>{progressMsg || 'Working'}</span></>
             ) : (
               <><Download size={12} /> {progressMsg ? progressMsg : 'Download .zip'}</>
             )}
           </button>
-          <a href={uploadUrl} target="_blank" rel="noopener noreferrer" className="mp-btn text-[13px] py-2 px-3">
+          <a href={uploadUrl} target="_blank" rel="noopener noreferrer" className="mp-btn text-[13px] py-2 px-3 flex-1 sm:flex-none">
             <Send size={12} /> Open upload page
           </a>
-          <button onClick={() => setExpanded(s => !s)} className="p-2 opacity-60 hover:opacity-100 transition">
-            {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+          <button onClick={() => setExpanded(s => !s)} className="p-2 opacity-60 hover:opacity-100 transition hidden sm:block" aria-label={expanded ? 'Collapse package' : 'Expand package'} aria-expanded={expanded}>
+            {expanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
           </button>
         </div>
       </div>
@@ -2766,14 +3010,18 @@ function PackageLabel({ label, hint, children }) {
 }
 
 function PackageField({ label, value }) {
-  const [copied, setCopied] = useState(false);
-  const copy = () => { navigator.clipboard.writeText(value || ''); setCopied(true); setTimeout(() => setCopied(false), 1200); };
+  const [state, setState] = useState(null); // null | 'ok' | 'fail'
+  const copy = async () => {
+    const ok = await copyPlainText(value || '');
+    setState(ok ? 'ok' : 'fail');
+    setTimeout(() => setState(null), 1600);
+  };
   return (
     <div className="mp-card p-2.5">
       <div className="flex items-center justify-between mb-1">
         <span className="mp-mono text-[11px] uppercase tracking-[0.2em]" style={{ color: 'rgba(21,23,28,0.5)' }}>{label}</span>
-        <button onClick={copy} className="opacity-60 hover:opacity-100 transition" aria-label={`Copy ${label}`}>
-          {copied ? <Check size={11} style={{ color: '#4FB286' }} /> : <Copy size={11} />}
+        <button onClick={copy} className="p-1.5 -m-1 opacity-60 hover:opacity-100 transition" aria-label={`Copy ${label}`} title={state === 'fail' ? 'Copy failed — select manually' : `Copy ${label}`}>
+          {state === 'ok' ? <Check size={13} style={{ color: '#4FB286' }} /> : state === 'fail' ? <X size={13} style={{ color: '#c83f10' }} /> : <Copy size={13} />}
         </button>
       </div>
       <div className="mp-display text-[15px] leading-tight truncate">{value || <span style={{ color: 'rgba(21,23,28,0.4)' }} className="mp-body">—</span>}</div>
@@ -2782,11 +3030,15 @@ function PackageField({ label, value }) {
 }
 
 function CopyButton({ text }) {
-  const [copied, setCopied] = useState(false);
-  const copy = () => { navigator.clipboard.writeText(text || ''); setCopied(true); setTimeout(() => setCopied(false), 1200); };
+  const [state, setState] = useState(null); // null | 'ok' | 'fail'
+  const copy = async () => {
+    const ok = await copyPlainText(text || '');
+    setState(ok ? 'ok' : 'fail');
+    setTimeout(() => setState(null), 1600);
+  };
   return (
-    <button onClick={copy} disabled={!text} className="mp-mono text-[12px] uppercase tracking-[0.2em] hover:text-[#FF5722] transition flex items-center gap-1 disabled:opacity-30">
-      {copied ? <><Check size={11} style={{ color: '#4FB286' }} /> Copied</> : <><Copy size={10} /> Copy</>}
+    <button onClick={copy} disabled={!text} className="mp-mono text-[12px] uppercase tracking-[0.2em] hover:text-[#FF5722] transition flex items-center gap-1 disabled:opacity-30 py-1" aria-label="Copy to clipboard">
+      {state === 'ok' ? <><Check size={13} style={{ color: '#4FB286' }} /> Copied</> : state === 'fail' ? <><X size={13} style={{ color: '#c83f10' }} /> Select &amp; copy</> : <><Copy size={12} /> Copy</>}
     </button>
   );
 }
@@ -2794,14 +3046,15 @@ function CopyButton({ text }) {
 // Copy button for rich-text editors: puts formatted content on the clipboard so
 // pasting into a WYSIWYG box (e.g. MakerWorld) keeps headings/bold/lists.
 function RichCopyButton({ html, plain, label = 'Copy formatted' }) {
-  const [copied, setCopied] = useState(false);
+  const [state, setState] = useState(null); // null | 'ok' | 'fail'
   const copy = async () => {
     const ok = await copyRichText(html, plain);
-    if (ok) { setCopied(true); setTimeout(() => setCopied(false), 1200); }
+    setState(ok ? 'ok' : 'fail');
+    setTimeout(() => setState(null), 1600);
   };
   return (
-    <button onClick={copy} disabled={!plain} className="mp-mono text-[12px] uppercase tracking-[0.2em] hover:text-[#FF5722] transition flex items-center gap-1 disabled:opacity-30">
-      {copied ? <><Check size={11} style={{ color: '#4FB286' }} /> Copied</> : <><Copy size={10} /> {label}</>}
+    <button onClick={copy} disabled={!plain} className="mp-mono text-[12px] uppercase tracking-[0.2em] hover:text-[#FF5722] transition flex items-center gap-1 disabled:opacity-30 py-1" aria-label={label}>
+      {state === 'ok' ? <><Check size={13} style={{ color: '#4FB286' }} /> Copied</> : state === 'fail' ? <><X size={13} style={{ color: '#c83f10' }} /> Select &amp; copy</> : <><Copy size={12} /> {label}</>}
     </button>
   );
 }
@@ -2973,12 +3226,12 @@ function GalleryThumb({ image, mainCover, onDownload }) {
       />
       <button
         onClick={onDownload}
-        className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition"
-        style={{ background: 'rgba(21,23,28,0.7)' }}
+        aria-label="Download this image as JPG"
+        title="Download JPG"
+        className="absolute bottom-1 right-1 p-1.5 flex items-center justify-center transition hover:bg-[#FF5722]"
+        style={{ background: 'rgba(21,23,28,0.85)', color: '#fff' }}
       >
-        <div className="mp-mono text-[12px] uppercase tracking-[0.2em] flex items-center gap-1" style={{ color: '#fff' }}>
-          <Download size={11} /> JPG
-        </div>
+        <Download size={14} />
       </button>
     </div>
   );
@@ -3001,7 +3254,7 @@ function SectionHeader({ number, title, subtitle }) {
           /// modelprep
         </span>
       </div>
-      <h2 className="mp-display text-[44px] leading-[0.92] mb-3" style={{ color: '#15171C' }}>{title}</h2>
+      <h2 className="mp-display text-[32px] sm:text-[44px] leading-[0.95] sm:leading-[0.92] mb-3" style={{ color: '#15171C' }}>{title}</h2>
       <p className="mp-body text-[15px] max-w-2xl leading-relaxed" style={{ color: 'rgba(21,23,28,0.65)' }}>{subtitle}</p>
     </div>
   );
