@@ -6,7 +6,7 @@ import {
 import {
   Upload, Download, Copy, Image as ImageIcon, FileText, Check, Sparkles,
   Folder, Send, Star, X, Plus, Trash2, ChevronRight, ChevronDown, ChevronUp,
-  AlertCircle, Layers, FileCheck, Loader, Save, Bookmark, Search,
+  AlertCircle, Layers, FileCheck, Loader, Save, Bookmark, Search, Clock,
   Globe, DollarSign, Info, Edit3, ArrowRight
 } from 'lucide-react';
 
@@ -2662,13 +2662,28 @@ function PublishSection({ project, allReady, completion, setCurrentSection }) {
   );
 }
 
+// Format a datetime-local value ("2026-05-25T14:00") for display.
+function formatSchedule(v) {
+  if (!v) return '';
+  const d = new Date(v);
+  if (isNaN(d)) return v;
+  return d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
+// A datetime-local min value (now) so users can't schedule in the past.
+function nowLocalMin() {
+  const pad = (n) => String(n).padStart(2, '0');
+  const d = new Date();
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 // Top-level batch upload (DEMO). Simulates one-click publishing to every enabled
 // platform that has an upload API (Cults3D, MyMiniFactory, Thingiverse).
 function BatchUploadPanel({ enabled, project }) {
   const apiPlatforms = enabled.filter(p => p.hasApi);
   const manualPlatforms = enabled.filter(p => !p.hasApi);
-  const [status, setStatus] = useState('idle'); // idle | running | done
+  const [status, setStatus] = useState('idle'); // idle | running | done | scheduled
   const [results, setResults] = useState([]);
+  const [scheduledAt, setScheduledAt] = useState('');
   const cancelled = useRef(false);
   useEffect(() => () => { cancelled.current = true; }, []);
   const sleep = (ms) => new Promise(r => setTimeout(r, ms));
@@ -2681,6 +2696,12 @@ function BatchUploadPanel({ enabled, project }) {
 
   const run = async () => {
     if (!apiPlatforms.length || status === 'running') return;
+    // Scheduled: capture intent for every API platform, no upload simulation.
+    if (scheduledAt) {
+      setResults(apiPlatforms.map(p => ({ id: p.id, name: p.name, state: 'scheduled', url: '' })));
+      setStatus('scheduled');
+      return;
+    }
     setStatus('running');
     setResults(apiPlatforms.map(p => ({ id: p.id, name: p.name, state: 'pending', url: '' })));
     const slug = slugify(project.title) || 'model';
@@ -2709,16 +2730,38 @@ function BatchUploadPanel({ enabled, project }) {
               : <>None of your enabled platforms have an upload API. Enable Cults3D, MyMiniFactory or Thingiverse to use one-click upload.</>}
           </p>
         </div>
-        <button
-          onClick={run}
-          disabled={!apiPlatforms.length || status === 'running'}
-          className="mp-btn text-[13px] py-2.5 px-4 disabled:opacity-40 flex-shrink-0"
-          style={apiPlatforms.length ? { background: '#3A86FF', borderColor: '#3A86FF' } : undefined}
-        >
-          {status === 'running'
-            ? <><Loader size={13} className="mp-spin" /> Uploading…</>
-            : <><Send size={13} /> Upload to {apiPlatforms.length || 'all'} platform{apiPlatforms.length === 1 ? '' : 's'}</>}
-        </button>
+        <div className="flex flex-col gap-2 flex-shrink-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <label className="mp-mono text-[11px] uppercase tracking-[0.15em] flex items-center gap-1.5" style={{ color: 'rgba(21,23,28,0.6)' }}>
+              <Clock size={12} /> Schedule
+            </label>
+            <input
+              type="datetime-local"
+              value={scheduledAt}
+              min={nowLocalMin()}
+              onChange={(e) => setScheduledAt(e.target.value)}
+              disabled={!apiPlatforms.length}
+              aria-label="Schedule publish to all API platforms"
+              className="mp-input"
+              style={{ width: 'auto', minHeight: 36, padding: '0.3rem 0.5rem', fontSize: '0.85rem' }}
+            />
+            {scheduledAt && (
+              <button onClick={() => setScheduledAt('')} className="mp-mono text-[11px] uppercase tracking-[0.15em] hover:text-[#FF5722] transition" aria-label="Clear schedule">clear</button>
+            )}
+          </div>
+          <button
+            onClick={run}
+            disabled={!apiPlatforms.length || status === 'running'}
+            className="mp-btn text-[13px] py-2.5 px-4 disabled:opacity-40"
+            style={apiPlatforms.length ? { background: '#3A86FF', borderColor: '#3A86FF' } : undefined}
+          >
+            {status === 'running'
+              ? <><Loader size={13} className="mp-spin" /> Uploading…</>
+              : scheduledAt
+                ? <><Clock size={13} /> Schedule {apiPlatforms.length || 'all'} for {formatSchedule(scheduledAt)}</>
+                : <><Send size={13} /> Upload to {apiPlatforms.length || 'all'} platform{apiPlatforms.length === 1 ? '' : 's'}</>}
+          </button>
+        </div>
       </div>
 
       {results.length > 0 && (
@@ -2727,12 +2770,16 @@ function BatchUploadPanel({ enabled, project }) {
             <div key={r.id} className="flex items-center gap-2 text-xs mp-card p-2" style={{ background: '#FFFFFF' }}>
               {r.state === 'done'
                 ? <Check size={13} style={{ color: '#3a8d68' }} className="flex-shrink-0" />
-                : r.state === 'uploading'
-                  ? <Loader size={13} className="mp-spin flex-shrink-0" style={{ color: '#3A86FF' }} />
-                  : <div className="w-[13px] h-[13px] rounded-full flex-shrink-0" style={{ border: '1.5px solid rgba(21,23,28,0.2)' }} />}
+                : r.state === 'scheduled'
+                  ? <Clock size={13} style={{ color: '#3a8d68' }} className="flex-shrink-0" />
+                  : r.state === 'uploading'
+                    ? <Loader size={13} className="mp-spin flex-shrink-0" style={{ color: '#3A86FF' }} />
+                    : <div className="w-[13px] h-[13px] rounded-full flex-shrink-0" style={{ border: '1.5px solid rgba(21,23,28,0.2)' }} />}
               <span className="mp-display font-bold flex-shrink-0" style={{ minWidth: 120 }}>{r.name}</span>
               <span className="mp-mono text-[12px] truncate" style={{ color: 'rgba(21,23,28,0.55)' }}>
-                {r.state === 'done' ? (r.id === 'mmf' ? 'queued for curation' : r.url) : r.state === 'uploading' ? 'uploading…' : 'waiting'}
+                {r.state === 'done' ? (r.id === 'mmf' ? 'queued for curation' : r.url)
+                  : r.state === 'scheduled' ? `scheduled · ${formatSchedule(scheduledAt)}`
+                  : r.state === 'uploading' ? 'uploading…' : 'waiting'}
               </span>
             </div>
           ))}
@@ -3146,9 +3193,10 @@ function RichCopyButton({ html, plain, label = 'Copy formatted' }) {
 // MyMiniFactory, Thingiverse). This is a DEMO — no network calls, no real upload.
 // It previews the UX that a backend-backed v0.3 would deliver.
 function MockUploadFlow({ platform, project, startSignal = 0 }) {
-  const [status, setStatus] = useState('idle'); // idle | connecting | connected | uploading | done
+  const [status, setStatus] = useState('idle'); // idle | connecting | connected | uploading | done | scheduled
   const [stepMsg, setStepMsg] = useState('');
   const [resultUrl, setResultUrl] = useState('');
+  const [scheduledAt, setScheduledAt] = useState('');
   const cancelled = useRef(false);
   const statusRef = useRef('idle');
   useEffect(() => { statusRef.current = status; }, [status]);
@@ -3172,6 +3220,8 @@ function MockUploadFlow({ platform, project, startSignal = 0 }) {
   }, [startSignal]);
 
   const publish = async () => {
+    // If a publish time is set, capture the schedule instead of uploading now.
+    if (scheduledAt) { setStatus('scheduled'); return; }
     setStatus('uploading');
     const steps = [
       `Authenticating with ${platform.name}…`,
@@ -3225,7 +3275,26 @@ function MockUploadFlow({ platform, project, startSignal = 0 }) {
             <div className="flex items-center gap-2 text-xs mb-2.5" style={{ color: '#3a8d68' }}>
               <Check size={14} /> Connected as <span className="mp-mono">@your-handle</span> <span style={{ color: 'rgba(21,23,28,0.4)' }}>(demo)</span>
             </div>
-            <button onClick={publish} className="mp-btn text-xs py-2 px-3"><Send size={13} /> Publish to {platform.name}</button>
+            <div className="flex items-center gap-2 mb-2.5 flex-wrap">
+              <label className="mp-mono text-[11px] uppercase tracking-[0.15em] flex items-center gap-1.5" style={{ color: 'rgba(21,23,28,0.6)' }}>
+                <Clock size={12} /> Schedule
+              </label>
+              <input
+                type="datetime-local"
+                value={scheduledAt}
+                min={nowLocalMin()}
+                onChange={(e) => setScheduledAt(e.target.value)}
+                aria-label={`Schedule publish to ${platform.name}`}
+                className="mp-input"
+                style={{ width: 'auto', minHeight: 36, padding: '0.3rem 0.5rem', fontSize: '0.85rem' }}
+              />
+              {scheduledAt && (
+                <button onClick={() => setScheduledAt('')} className="mp-mono text-[11px] uppercase tracking-[0.15em] hover:text-[#FF5722] transition" aria-label="Clear schedule">clear</button>
+              )}
+            </div>
+            <button onClick={publish} className="mp-btn text-xs py-2 px-3">
+              {scheduledAt ? <><Clock size={13} /> Schedule for {formatSchedule(scheduledAt)}</> : <><Send size={13} /> Publish to {platform.name}</>}
+            </button>
           </>
         )}
 
@@ -3233,6 +3302,20 @@ function MockUploadFlow({ platform, project, startSignal = 0 }) {
           <div className="flex items-center gap-2 text-xs py-1.5" style={{ color: 'rgba(21,23,28,0.7)' }}>
             <Loader size={14} className="mp-spin" /> {stepMsg}
           </div>
+        )}
+
+        {status === 'scheduled' && (
+          <>
+            <div className="flex items-center gap-2 text-xs mb-1.5" style={{ color: '#3a8d68' }}>
+              <Clock size={14} /> Scheduled for {formatSchedule(scheduledAt)}
+            </div>
+            <p className="text-[12px] mb-2 leading-snug" style={{ color: 'rgba(21,23,28,0.55)' }}>
+              {platform.name} will publish automatically at that time once timed publishing ships (it runs server-side). For now this captures the intent.
+            </p>
+            <button onClick={() => setStatus('connected')} className="mp-mono text-[12px] uppercase tracking-[0.2em] hover:text-[#FF5722] transition flex items-center gap-1">
+              <ArrowRight size={11} /> Change schedule
+            </button>
+          </>
         )}
 
         {status === 'done' && (
