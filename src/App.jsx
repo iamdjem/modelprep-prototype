@@ -2637,11 +2637,14 @@ function PlatformPackageCard({ platform, project, cover, platformState }) {
             </div>
           )}
 
+          {/* One-click upload (demo) — only platforms with a real upload API */}
+          {platform.hasApi && <MockUploadFlow platform={platform} project={project} />}
+
           {/* Workflow hint */}
           <div className="border-t pt-3 flex items-start gap-2 text-[11px]" style={{ borderColor: 'rgba(21,23,28,0.08)', color: 'rgba(21,23,28,0.6)' }}>
             <Info size={12} className="flex-shrink-0 mt-0.5" style={{ color: '#FF5722' }} />
             <div>
-              <strong className="mp-display tracking-wide" style={{ color: '#15171C' }}>WORKFLOW</strong>{' '}
+              <strong className="mp-display tracking-wide" style={{ color: '#15171C' }}>{platform.hasApi ? 'MANUAL UPLOAD (WORKS TODAY)' : 'WORKFLOW'}</strong>{' '}
               <span>1) Click "Open upload page". 2) Drag model files into the form. 3) Copy → paste title and description. 4) Drop the downloaded cover image. 5) Drop gallery images in order. 6) Paste tags. 7) Pick the closest category. Done.</span>
             </div>
           </div>
@@ -2701,6 +2704,114 @@ function RichCopyButton({ html, plain, label = 'Copy formatted' }) {
     <button onClick={copy} disabled={!plain} className="mp-mono text-[10px] uppercase tracking-[0.2em] hover:text-[#FF5722] transition flex items-center gap-1 disabled:opacity-30">
       {copied ? <><Check size={11} style={{ color: '#4FB286' }} /> Copied</> : <><Copy size={10} /> {label}</>}
     </button>
+  );
+}
+
+// Simulated one-click upload for platforms with a real upload API (Cults3D,
+// MyMiniFactory, Thingiverse). This is a DEMO — no network calls, no real upload.
+// It previews the UX that a backend-backed v0.3 would deliver.
+function MockUploadFlow({ platform, project }) {
+  const [status, setStatus] = useState('idle'); // idle | connecting | connected | uploading | done
+  const [stepMsg, setStepMsg] = useState('');
+  const [resultUrl, setResultUrl] = useState('');
+  const cancelled = useRef(false);
+  useEffect(() => () => { cancelled.current = true; }, []);
+  const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+
+  const fileCount = project.files.length;
+  const imgCount = project.images.length;
+
+  const connect = async () => {
+    setStatus('connecting');
+    await sleep(1100);
+    if (cancelled.current) return;
+    setStatus('connected');
+  };
+
+  const publish = async () => {
+    setStatus('uploading');
+    const steps = [
+      `Authenticating with ${platform.name}…`,
+      `Uploading ${fileCount} model file${fileCount === 1 ? '' : 's'}…`,
+      `Uploading ${imgCount} image${imgCount === 1 ? '' : 's'}…`,
+      `Submitting title, description, tags, license…`,
+      platform.id === 'mmf' ? `Queuing for curation (test print)…` : `Publishing…`,
+    ];
+    for (const s of steps) {
+      if (cancelled.current) return;
+      setStepMsg(s);
+      await sleep(850);
+    }
+    if (cancelled.current) return;
+    const slug = (project.title || 'untitled-model').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'model';
+    const urls = {
+      cults: `https://cults3d.com/en/3d-model/${slug}`,
+      mmf: `https://www.myminifactory.com/object/${slug}`,
+      thingiverse: `https://www.thingiverse.com/thing:${slug}`,
+    };
+    setResultUrl(urls[platform.id] || '#');
+    setStatus('done');
+  };
+
+  return (
+    <div className="border-t pt-3" style={{ borderColor: 'rgba(21,23,28,0.08)' }}>
+      <div className="mp-card p-3" style={{ background: 'rgba(58,134,255,0.05)', border: '1px solid rgba(58,134,255,0.35)' }}>
+        <div className="flex items-center gap-2 mb-2">
+          <span className="mp-display tracking-wide text-[13px]" style={{ color: '#15171C' }}>ONE-CLICK UPLOAD</span>
+          <span className="mp-mono text-[8px] uppercase tracking-[0.2em] px-1.5 py-0.5" style={{ background: '#3A86FF', color: '#fff' }}>Demo</span>
+          <span className="mp-mono text-[9px] uppercase tracking-[0.15em]" style={{ color: 'rgba(21,23,28,0.45)' }}>{platform.name} has an upload API</span>
+        </div>
+
+        {status === 'idle' && (
+          <>
+            <p className="text-[11px] mb-2.5 leading-snug" style={{ color: 'rgba(21,23,28,0.65)' }}>
+              {platform.name} supports publishing via API. Connect your account once, then publish straight from here — no manual upload page.
+            </p>
+            <button onClick={connect} className="mp-btn text-xs py-2 px-3"><Globe size={13} /> Connect {platform.name}</button>
+          </>
+        )}
+
+        {status === 'connecting' && (
+          <div className="flex items-center gap-2 text-xs py-1.5" style={{ color: 'rgba(21,23,28,0.7)' }}>
+            <Loader size={14} className="mp-spin" /> Opening {platform.name} authorization…
+          </div>
+        )}
+
+        {status === 'connected' && (
+          <>
+            <div className="flex items-center gap-2 text-xs mb-2.5" style={{ color: '#3a8d68' }}>
+              <Check size={14} /> Connected as <span className="mp-mono">@your-handle</span> <span style={{ color: 'rgba(21,23,28,0.4)' }}>(demo)</span>
+            </div>
+            <button onClick={publish} className="mp-btn text-xs py-2 px-3"><Send size={13} /> Publish to {platform.name}</button>
+          </>
+        )}
+
+        {status === 'uploading' && (
+          <div className="flex items-center gap-2 text-xs py-1.5" style={{ color: 'rgba(21,23,28,0.7)' }}>
+            <Loader size={14} className="mp-spin" /> {stepMsg}
+          </div>
+        )}
+
+        {status === 'done' && (
+          <>
+            <div className="flex items-center gap-2 text-xs mb-1.5" style={{ color: '#3a8d68' }}>
+              <Check size={14} /> {platform.id === 'mmf' ? 'Submitted — queued for curation' : 'Published (simulated)'}
+            </div>
+            <div className="mp-card mp-mono text-[11px] p-2 mb-2 break-all" style={{ background: 'rgba(21,23,28,0.04)', color: 'rgba(21,23,28,0.7)' }}>{resultUrl}</div>
+            {platform.id === 'mmf' && (
+              <p className="text-[10px] mb-2 leading-snug" style={{ color: 'rgba(21,23,28,0.55)' }}>MyMiniFactory test-prints before publishing, so it won't be live immediately.</p>
+            )}
+            <button onClick={() => { setStatus('connected'); setStepMsg(''); }} className="mp-mono text-[10px] uppercase tracking-[0.2em] hover:text-[#FF5722] transition flex items-center gap-1">
+              <ArrowRight size={11} /> Publish again
+            </button>
+          </>
+        )}
+
+        <p className="text-[9px] mt-2.5 leading-snug" style={{ color: 'rgba(21,23,28,0.4)' }}>
+          Simulation only — nothing is uploaded yet. Real API upload to Cults3D, MyMiniFactory & Thingiverse is the next build phase. For now, use the manual steps below.
+        </p>
+      </div>
+    </div>
   );
 }
 
