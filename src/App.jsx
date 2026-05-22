@@ -409,7 +409,7 @@ function generateReadme(platform, project, descExt, imageCount, fileCount) {
     `WHAT IS IN THIS FOLDER`,
     '-'.repeat(40),
     `- ${platform.covers.length} cover image(s), named 01_cover_*.jpg`,
-    `- ${Math.max(0, imageCount - 1)} gallery image(s), named 02_gallery_*.jpg, 03_gallery_*.jpg, ...`,
+    `- ${Math.min(Math.max(0, imageCount - 1), platform.maxImages - 1)} gallery image(s), named 02_gallery_*.jpg, 03_gallery_*.jpg, ...`,
     isRichTextPlatform(platform.id)
       ? `- description.html (rendered — open in a browser, select all, copy, then paste into ${platform.name}'s visual editor; do NOT paste the raw HTML)`
       : `- description.${descExt} (in ${platform.descFormat} format, ready to paste)`,
@@ -491,28 +491,28 @@ export default function App() {
 
   // Auto-generate profile entries when 3MF files are added
   useEffect(() => {
-    const threeMFs = project.files.filter(f => isProfile(f.name));
-    const profileIds = new Set(project.profiles.map(p => p.fileId));
-    const newProfiles = threeMFs
-      .filter(f => !profileIds.has(f.id))
-      .map(f => ({
-        id: 'prof_' + f.id,
-        fileId: f.id,
-        name: f.name.replace(/\.3mf$/i, ''),
-        description: '',
-        useMainCover: true,
-        coverImageId: null,
-        parsed: mockParseThreeMF(f.name),
-      }));
-    if (newProfiles.length) {
-      updateProject({ profiles: [...project.profiles, ...newProfiles] });
-    }
-    // Remove profiles whose files were deleted
-    const liveFileIds = new Set(project.files.map(f => f.id));
-    const liveProfiles = project.profiles.filter(p => liveFileIds.has(p.fileId));
-    if (liveProfiles.length !== project.profiles.length) {
-      updateProject({ profiles: liveProfiles });
-    }
+    // Single functional update derived from the previous state, so adding new
+    // 3MFs and pruning deleted ones can't clobber each other (was two stale-
+    // closure updateProject calls that could drop a just-added profile).
+    setProject(prev => {
+      const liveFileIds = new Set(prev.files.map(f => f.id));
+      const existing = new Set(prev.profiles.map(p => p.fileId));
+      const kept = prev.profiles.filter(p => liveFileIds.has(p.fileId));
+      const added = prev.files
+        .filter(f => isProfile(f.name) && !existing.has(f.id))
+        .map(f => ({
+          id: 'prof_' + f.id,
+          fileId: f.id,
+          name: f.name.replace(/\.3mf$/i, ''),
+          description: '',
+          useMainCover: true,
+          coverImageId: null,
+          parsed: mockParseThreeMF(f.name),
+        }));
+      // No change → return prev to avoid an extra render.
+      if (!added.length && kept.length === prev.profiles.length) return prev;
+      return { ...prev, profiles: [...kept, ...added] };
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [project.files]);
 
@@ -667,7 +667,7 @@ function Modal({ dialog, onClose }) {
             ref={inputRef}
             value={value}
             onChange={(e) => setValue(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter') confirm(); }}
+            onKeyDown={(e) => { if (e.key === 'Enter' && value.trim()) confirm(); }}
             placeholder={placeholder}
             aria-label={title}
             className="mp-input mb-4"
@@ -1009,7 +1009,7 @@ function FilesSection({ project, updateProject, setCurrentSection }) {
 
   const handleFiles = (fileList) => {
     const arr = Array.from(fileList);
-    const supported = arr.filter(f => isModelFile(f.name) || ['pdf', 'txt', 'md', 'png', 'jpg', 'jpeg', 'zip'].includes(fileExt(f.name)));
+    const supported = arr.filter(f => isModelFile(f.name) || ['pdf', 'txt', 'md', 'png', 'jpg', 'jpeg', 'webp', 'gif', 'zip'].includes(fileExt(f.name)));
 
     // #1 — reject single files larger than any platform will accept.
     const tooBig = supported.filter(f => f.size / 1024 / 1024 > MAX_BUILD_FILE_MB);
@@ -1088,7 +1088,7 @@ function FilesSection({ project, updateProject, setCurrentSection }) {
           ref={fileInputRef}
           type="file"
           multiple
-          accept=".stl,.3mf,.obj,.step,.stp,.amf,.scad,.dxf,.svg,.pdf,.zip,.png,.jpg,.jpeg"
+          accept=".stl,.3mf,.obj,.step,.stp,.amf,.scad,.dxf,.svg,.pdf,.txt,.md,.zip,.png,.jpg,.jpeg,.webp,.gif"
           onChange={(e) => handleFiles(e.target.files)}
           className="hidden"
         />
@@ -1383,9 +1383,10 @@ function DetailsSection({ project, updateProject, setCurrentSection }) {
 
   const visibleLicenses = LICENSES.filter(l => matchesLicenseFilter(l, licenseFilter));
 
+  const MAX_TAGS = 20;
   const addTag = (raw) => {
     const t = raw.trim().toLowerCase().replace(/\s+/g, '-');
-    if (!t || project.tags.includes(t)) return;
+    if (!t || project.tags.includes(t) || project.tags.length >= MAX_TAGS) return;
     updateProject({ tags: [...project.tags, t] });
   };
   const removeTag = (t) => updateProject({ tags: project.tags.filter(x => x !== t) });
@@ -1399,8 +1400,10 @@ function DetailsSection({ project, updateProject, setCurrentSection }) {
   };
 
   const suggestTags = () => {
+    const room = MAX_TAGS - project.tags.length;
+    if (room <= 0) return;
     const suggestions = aiSuggestTags(project.title || 'thing');
-    const newTags = suggestions.filter(t => !project.tags.includes(t)).slice(0, 5);
+    const newTags = suggestions.filter(t => !project.tags.includes(t)).slice(0, Math.min(5, room));
     updateProject({ tags: [...project.tags, ...newTags] });
   };
 
@@ -1700,14 +1703,18 @@ function ImagesSection({ project, updateProject, setCurrentSection }) {
 
   const addSamples = async (specs) => {
     // Build every sample first, then commit in ONE update so they don't race.
-    const built = await Promise.all(specs.map(async ({ label, tint }, i) => {
-      const dataUrl = makeSampleImage(label, tint);
-      const img = await loadImageFromDataUrl(dataUrl);
-      return {
-        id: 'img_' + Date.now() + '_' + i + '_' + Math.random().toString(36).slice(2, 7),
-        dataUrl, naturalW: img.naturalWidth, naturalH: img.naturalHeight, focal: { x: 0.5, y: 0.5 }, alt: `Sample ${i + 1}`,
-      };
+    const results = await Promise.all(specs.map(async ({ label, tint }, i) => {
+      try {
+        const dataUrl = makeSampleImage(label, tint);
+        const img = await loadImageFromDataUrl(dataUrl);
+        return {
+          id: 'img_' + Date.now() + '_' + i + '_' + Math.random().toString(36).slice(2, 7),
+          dataUrl, naturalW: img.naturalWidth, naturalH: img.naturalHeight, focal: { x: 0.5, y: 0.5 }, alt: `Sample ${i + 1}`,
+        };
+      } catch (e) { return null; }
     }));
+    const built = results.filter(Boolean);
+    if (!built.length) return;
     const newImages = [...project.images, ...built];
     const patch = { images: newImages };
     if (!project.coverImageId && built.length) patch.coverImageId = built[0].id;
@@ -1877,7 +1884,7 @@ function ImagesSection({ project, updateProject, setCurrentSection }) {
 
                 <div className="flex items-center justify-between mt-6 mb-3">
                   <span className="mp-mono text-[13px] uppercase tracking-[0.2em]" style={{ color: 'rgba(21,23,28,0.55)' }}>
-                    Per-platform preview · {showPlatformPreviews ? PLATFORMS.length : 0} crops
+                    Per-platform preview · {showPlatformPreviews ? PLATFORMS.reduce((n, p) => n + p.covers.length, 0) : 0} crops
                   </span>
                   <button onClick={() => setShowPlatformPreviews(s => !s)} className="mp-mono text-[12px] uppercase tracking-[0.15em] hover:text-[#FF5722] transition flex items-center gap-1">
                     {showPlatformPreviews ? <><ChevronDown size={11} /> Hide</> : <><ChevronRight size={11} /> Show</>}
