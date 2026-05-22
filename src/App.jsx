@@ -47,6 +47,29 @@ function downloadTextFile(text, filename) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
+// Platforms whose description box is a rich-text/WYSIWYG editor (not a raw-HTML
+// or markdown field). Pasting HTML *source* into these shows literal tags, so we
+// copy rendered content as rich text instead — paste keeps the formatting.
+const RICH_TEXT_PLATFORMS = ['makerworld'];
+function isRichTextPlatform(id) { return RICH_TEXT_PLATFORMS.includes(id); }
+
+// Copy rendered HTML to the clipboard as rich text (with a plain-text fallback),
+// so pasting into a WYSIWYG editor preserves headings/bold/lists.
+async function copyRichText(html, plain) {
+  try {
+    if (navigator.clipboard && window.ClipboardItem) {
+      await navigator.clipboard.write([
+        new window.ClipboardItem({
+          'text/html': new Blob([html], { type: 'text/html' }),
+          'text/plain': new Blob([plain], { type: 'text/plain' }),
+        }),
+      ]);
+      return true;
+    }
+  } catch (e) { /* fall through to plain text */ }
+  try { await navigator.clipboard.writeText(plain); return true; } catch (e) { return false; }
+}
+
 const PLATFORMS = [
   {
     id: 'makerworld', name: 'MakerWorld', org: 'Bambu Lab', dot: '#FF6900',
@@ -363,7 +386,9 @@ function generateReadme(platform, project, descExt, imageCount, fileCount) {
     '-'.repeat(40),
     `- ${platform.covers.length} cover image(s), named 01_cover_*.jpg`,
     `- ${Math.max(0, imageCount - 1)} gallery image(s), named 02_gallery_*.jpg, 03_gallery_*.jpg, ...`,
-    `- description.${descExt} (in ${platform.descFormat} format, ready to paste)`,
+    isRichTextPlatform(platform.id)
+      ? `- description.html (rendered — open in a browser, select all, copy, then paste into ${platform.name}'s visual editor; do NOT paste the raw HTML)`
+      : `- description.${descExt} (in ${platform.descFormat} format, ready to paste)`,
     `- metadata.txt (title, category, tags, license, all paste-ready)`,
     `- files/ folder with ${fileCount} model file(s)`,
     '',
@@ -374,7 +399,9 @@ function generateReadme(platform, project, descExt, imageCount, fileCount) {
     `3. Drag 01_cover_*.jpg into the cover image slot.`,
     `4. Drag the gallery images (02_*, 03_*, ...) into the gallery, in order.`,
     `5. Open metadata.txt, copy and paste the title field.`,
-    `6. Open description.${descExt}, select all, copy, paste into description.`,
+    isRichTextPlatform(platform.id)
+      ? `6. Open description.html in a browser, select all, copy, paste into the description editor — formatting is preserved. (Do NOT paste raw HTML; ${platform.name}'s editor shows the tags.)`
+      : `6. Open description.${descExt}, select all, copy, paste into description.`,
     `7. Copy tags from metadata.txt into the tags field.`,
     `8. Pick the closest category match and the license listed.`,
   ];
@@ -1357,17 +1384,25 @@ function Label({ children, className = '' }) {
 function FormatTabs({ description }) {
   const [active, setActive] = useState('md');
   const [copied, setCopied] = useState(null);
-  const outputs = { md: description, html: mdToHtml(description), plain: mdToPlain(description) };
-  const copy = (k) => { navigator.clipboard.writeText(outputs[k]); setCopied(k); setTimeout(() => setCopied(null), 1500); };
-  const platformsFor = {
-    md: ['Printables', 'Cults3D', 'Nexprint'],
-    html: ['MakerWorld', 'MyMiniFactory', 'Thangs', 'Creality'],
-    plain: ['Thingiverse'],
+  const html = mdToHtml(description);
+  const plain = mdToPlain(description);
+  const outputs = { md: description, rich: html, html, plain };
+  const copy = async (k) => {
+    if (k === 'rich') { const ok = await copyRichText(html, plain); if (!ok) return; }
+    else { navigator.clipboard.writeText(outputs[k]); }
+    setCopied(k); setTimeout(() => setCopied(null), 1500);
   };
+  const tabs = [
+    { k: 'md',    label: 'Markdown',  platforms: ['Printables', 'Cults3D', 'Nexprint'] },
+    { k: 'rich',  label: 'Formatted', platforms: ['MakerWorld'] },
+    { k: 'html',  label: 'HTML',      platforms: ['MyMiniFactory', 'Thangs', 'Creality'] },
+    { k: 'plain', label: 'Plain',     platforms: ['Thingiverse'] },
+  ];
+  const copyLabel = active === 'rich' ? 'Copy formatted' : `Copy ${active}`;
   return (
     <div className="mp-card">
       <div className="flex border-b" style={{ borderColor: 'rgba(21,23,28,0.1)' }}>
-        {['md', 'html', 'plain'].map(k => (
+        {tabs.map(({ k, label, platforms }) => (
           <button
             key={k}
             onClick={() => setActive(k)}
@@ -1378,21 +1413,29 @@ function FormatTabs({ description }) {
               borderColor: 'rgba(21,23,28,0.1)',
             }}
           >
-            {k === 'md' ? 'Markdown' : k === 'html' ? 'HTML' : 'Plain'}
+            {label}
             <div className="text-[9px] font-normal opacity-60 mt-0.5">
-              {platformsFor[k].join(', ')}
+              {platforms.join(', ')}
             </div>
           </button>
         ))}
       </div>
-      <div className="p-3 flex justify-end border-b" style={{ borderColor: 'rgba(21,23,28,0.1)' }}>
-        <button onClick={() => copy(active)} className="mp-mono text-[10px] uppercase tracking-[0.2em] flex items-center gap-1.5 hover:text-[#FF5722] transition">
-          {copied === active ? <><Check size={11} /> Copied</> : <><Copy size={11} /> Copy {active}</>}
+      <div className="p-3 flex items-center justify-between border-b gap-2" style={{ borderColor: 'rgba(21,23,28,0.1)' }}>
+        <span className="mp-mono text-[9px] uppercase tracking-[0.15em]" style={{ color: 'rgba(21,23,28,0.45)' }}>
+          {active === 'rich' ? 'Rendered — paste into the visual editor, keeps formatting' : active === 'html' ? 'Raw HTML source' : active === 'md' ? 'Markdown source' : 'Plain text'}
+        </span>
+        <button onClick={() => copy(active)} className="mp-mono text-[10px] uppercase tracking-[0.2em] flex items-center gap-1.5 hover:text-[#FF5722] transition flex-shrink-0">
+          {copied === active ? <><Check size={11} /> Copied</> : <><Copy size={11} /> {copyLabel}</>}
         </button>
       </div>
-      <pre className="mp-pre mp-mono p-4 text-xs leading-relaxed max-h-64 overflow-auto" style={{ color: 'rgba(21,23,28,0.85)' }}>
-        {outputs[active] || <span style={{ color: 'rgba(21,23,28,0.3)' }}>Write something in markdown to see formatted outputs</span>}
-      </pre>
+      {active === 'rich' ? (
+        <div className="mp-prose p-4 text-sm max-h-64 overflow-auto"
+          dangerouslySetInnerHTML={{ __html: html || '<span style="color:rgba(21,23,28,0.3)">Write something in markdown to see the formatted output</span>' }} />
+      ) : (
+        <pre className="mp-pre mp-mono p-4 text-xs leading-relaxed max-h-64 overflow-auto" style={{ color: 'rgba(21,23,28,0.85)' }}>
+          {outputs[active] || <span style={{ color: 'rgba(21,23,28,0.3)' }}>Write something in markdown to see formatted outputs</span>}
+        </pre>
+      )}
     </div>
   );
 }
@@ -2488,15 +2531,33 @@ function PlatformPackageCard({ platform, project, cover, platformState }) {
 
           {/* Description */}
           <div>
-            <PackageLabel label={`Description (${platform.descFormat})`} hint={`${desc.length} chars`}>
-              <CopyButton text={desc} />
-              <button onClick={downloadDescriptionFile} className="mp-mono text-[10px] uppercase tracking-[0.2em] hover:text-[#FF5722] transition flex items-center gap-1">
-                <Download size={10} /> .{platform.descFormat === 'markdown' ? 'md' : platform.descFormat === 'html' ? 'html' : 'txt'}
-              </button>
-            </PackageLabel>
-            <pre className="mp-pre mp-mono text-[11px] leading-relaxed mp-card p-3 max-h-48 overflow-auto" style={{ background: 'rgba(21,23,28,0.03)', color: 'rgba(21,23,28,0.85)' }}>
-              {desc || <span style={{ color: 'rgba(21,23,28,0.4)' }}>(no description)</span>}
-            </pre>
+            {isRichTextPlatform(platform.id) ? (
+              <>
+                <PackageLabel label="Description (rich text)" hint={`${platform.name} uses a visual editor — paste keeps formatting`}>
+                  <RichCopyButton html={mdToHtml(project.description)} plain={mdToPlain(project.description)} />
+                  <button onClick={downloadDescriptionFile} className="mp-mono text-[10px] uppercase tracking-[0.2em] hover:text-[#FF5722] transition flex items-center gap-1">
+                    <Download size={10} /> .html
+                  </button>
+                </PackageLabel>
+                <div className="mp-card mp-prose p-4 text-[13px] max-h-56 overflow-auto" style={{ background: '#FFFFFF' }}
+                  dangerouslySetInnerHTML={{ __html: mdToHtml(project.description) || '<span style="color:rgba(21,23,28,0.4)">(no description)</span>' }} />
+                <p className="text-[10px] mt-1.5 leading-snug" style={{ color: 'rgba(21,23,28,0.45)' }}>
+                  Don't paste raw HTML into {platform.name} — it shows the tags. Hit <strong>Copy formatted</strong>, then paste into the description box. (The .html download is a backup: open it in a browser, select all, copy.)
+                </p>
+              </>
+            ) : (
+              <>
+                <PackageLabel label={`Description (${platform.descFormat})`} hint={`${desc.length} chars`}>
+                  <CopyButton text={desc} />
+                  <button onClick={downloadDescriptionFile} className="mp-mono text-[10px] uppercase tracking-[0.2em] hover:text-[#FF5722] transition flex items-center gap-1">
+                    <Download size={10} /> .{platform.descFormat === 'markdown' ? 'md' : platform.descFormat === 'html' ? 'html' : 'txt'}
+                  </button>
+                </PackageLabel>
+                <pre className="mp-pre mp-mono text-[11px] leading-relaxed mp-card p-3 max-h-48 overflow-auto" style={{ background: 'rgba(21,23,28,0.03)', color: 'rgba(21,23,28,0.85)' }}>
+                  {desc || <span style={{ color: 'rgba(21,23,28,0.4)' }}>(no description)</span>}
+                </pre>
+              </>
+            )}
           </div>
 
           {/* Cover image(s) */}
@@ -2624,6 +2685,21 @@ function CopyButton({ text }) {
   return (
     <button onClick={copy} disabled={!text} className="mp-mono text-[10px] uppercase tracking-[0.2em] hover:text-[#FF5722] transition flex items-center gap-1 disabled:opacity-30">
       {copied ? <><Check size={11} style={{ color: '#4FB286' }} /> Copied</> : <><Copy size={10} /> Copy</>}
+    </button>
+  );
+}
+
+// Copy button for rich-text editors: puts formatted content on the clipboard so
+// pasting into a WYSIWYG box (e.g. MakerWorld) keeps headings/bold/lists.
+function RichCopyButton({ html, plain, label = 'Copy formatted' }) {
+  const [copied, setCopied] = useState(false);
+  const copy = async () => {
+    const ok = await copyRichText(html, plain);
+    if (ok) { setCopied(true); setTimeout(() => setCopied(false), 1200); }
+  };
+  return (
+    <button onClick={copy} disabled={!plain} className="mp-mono text-[10px] uppercase tracking-[0.2em] hover:text-[#FF5722] transition flex items-center gap-1 disabled:opacity-30">
+      {copied ? <><Check size={11} style={{ color: '#4FB286' }} /> Copied</> : <><Copy size={10} /> {label}</>}
     </button>
   );
 }
