@@ -1,8 +1,8 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import {
   Upload, Download, Copy, Image as ImageIcon, FileText, Check, Sparkles,
-  Folder, Send, Star, X, Plus, Trash2, ChevronRight, ChevronDown,
-  AlertCircle, Layers, FileCheck, Loader, Save, Bookmark,
+  Folder, Send, Star, X, Plus, Trash2, ChevronRight, ChevronDown, ChevronUp,
+  AlertCircle, Layers, FileCheck, Loader, Save, Bookmark, Search,
   Globe, DollarSign, Info, Edit3, ArrowRight
 } from 'lucide-react';
 
@@ -136,7 +136,9 @@ const SECTIONS = [
 
 const SAMPLE_DESCRIPTION = `# Articulating Desk Dragon
 
-A snap-fit dragon that prints in place. No supports, no glue, no shame.
+A snap-fit dragon that prints in place.
+
+No supports, no glue, no shame.
 
 ## What's included
 
@@ -818,24 +820,46 @@ function Sidebar({ currentSection, setCurrentSection, completion }) {
 // SECTION: FILES
 // =====================================================================
 
+// Largest "total package" allowance across platforms — anything over this is
+// rejected everywhere, so we block the upload outright rather than just warn.
+const MAX_BUILD_FILE_MB = 500;
+
+function isImageFile(name) { return ['png', 'jpg', 'jpeg', 'webp', 'gif'].includes(fileExt(name)); }
+
 function FilesSection({ project, updateProject, setCurrentSection }) {
   const fileInputRef = useRef(null);
+  const [notice, setNotice] = useState(null); // { kind: 'image' | 'toobig', detail }
 
   const handleFiles = (fileList) => {
     const arr = Array.from(fileList);
-    const additions = arr
-      .filter(f => isModelFile(f.name) || ['pdf', 'txt', 'md', 'png', 'jpg', 'jpeg', 'zip'].includes(fileExt(f.name)))
-      .map(f => ({
-        id: 'f_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
-        name: f.name,
-        size: f.size,
-        type: f.type,
-        isModel: isModelFile(f.name),
-        isProfile: isProfile(f.name),
-        blob: f,  // keep the actual File so we can include it in ZIP exports
-      }));
+    const supported = arr.filter(f => isModelFile(f.name) || ['pdf', 'txt', 'md', 'png', 'jpg', 'jpeg', 'zip'].includes(fileExt(f.name)));
+
+    // #1 — reject single files larger than any platform will accept.
+    const tooBig = supported.filter(f => f.size / 1024 / 1024 > MAX_BUILD_FILE_MB);
+    const withinLimit = supported.filter(f => f.size / 1024 / 1024 <= MAX_BUILD_FILE_MB);
+
+    const additions = withinLimit.map(f => ({
+      id: 'f_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
+      name: f.name,
+      size: f.size,
+      type: f.type,
+      isModel: isModelFile(f.name),
+      isProfile: isProfile(f.name),
+      isImage: isImageFile(f.name),
+      blob: f,  // keep the actual File so we can include it in ZIP exports
+    }));
+
+    if (tooBig.length) {
+      setNotice({ kind: 'toobig', detail: tooBig.map(f => `${f.name} (${formatBytes(f.size)})`).join(', ') });
+    } else if (additions.some(a => a.isImage)) {
+      // #3 — images are accepted as reference files, but gallery photos belong in step 03.
+      setNotice({ kind: 'image', detail: null });
+    } else {
+      setNotice(null);
+    }
+
     if (additions.length === 0) {
-      alert('No supported model files in your drop. Try .stl, .3mf, .obj, .step, or .amf.');
+      if (!tooBig.length) alert('No supported files in your drop. Try .stl, .3mf, .obj, .step, or .amf.');
       return;
     }
     updateProject({ files: [...project.files, ...additions] });
@@ -874,13 +898,37 @@ function FilesSection({ project, updateProject, setCurrentSection }) {
           <Upload size={22} strokeWidth={2.5} style={{ color: '#FF5722' }} />
         </div>
         <h2 className="mp-display text-[36px] leading-none mb-2">Load build files</h2>
-        <p className="mp-body text-sm mb-3" style={{ color: 'rgba(21,23,28,0.65)' }}>drag &amp; drop · or click anywhere in the work area</p>
+        <p className="mp-body text-sm mb-3" style={{ color: 'rgba(21,23,28,0.65)' }}>drag &amp; drop · or click anywhere in the work area · max {MAX_BUILD_FILE_MB}MB per file</p>
         <div className="inline-flex items-center gap-1.5 mp-mono text-[10px] uppercase tracking-[0.2em] flex-wrap justify-center" style={{ color: 'rgba(21,23,28,0.5)' }}>
           {['stl', '3mf', 'obj', 'step', 'amf', 'scad', 'svg', 'dxf', 'pdf'].map(ext => (
             <span key={ext} className="mp-pill" style={{ background: 'rgba(21,23,28,0.06)' }}>.{ext}</span>
           ))}
         </div>
       </div>
+
+      {notice && (
+        <div className="mt-4 p-3 flex items-start gap-3" style={{ background: 'rgba(255,87,34,0.08)', border: '1px solid rgba(255,87,34,0.3)' }}>
+          <AlertCircle size={16} style={{ color: '#FF5722' }} className="flex-shrink-0 mt-0.5" />
+          <div className="text-xs flex-1">
+            {notice.kind === 'toobig' ? (
+              <>
+                <div className="mp-display font-bold mb-1">File too large — not added</div>
+                <div style={{ color: 'rgba(21,23,28,0.7)' }}>
+                  {notice.detail} exceeds the {MAX_BUILD_FILE_MB}MB per-file ceiling that platforms accept. Decimate the mesh or split it before uploading.
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="mp-display font-bold mb-1">Added an image as a build file</div>
+                <div style={{ color: 'rgba(21,23,28,0.7)' }}>
+                  Kept it (handy for print diagrams). But if these are gallery photos, add them in <strong>step 03 · Images</strong> instead — that's where per-platform crops happen.
+                </div>
+              </>
+            )}
+          </div>
+          <button onClick={() => setNotice(null)} className="p-0.5 opacity-50 hover:opacity-100 transition" aria-label="Dismiss"><X size={13} /></button>
+        </div>
+      )}
 
       {project.files.length > 0 && (
         <div className="mt-6">
@@ -914,10 +962,11 @@ function FilesSection({ project, updateProject, setCurrentSection }) {
 
 function FileRow({ file, onRemove }) {
   const isProf = file.isProfile;
+  const isImg = file.isImage;
   return (
     <div className="mp-card p-3 flex items-center gap-3">
-      <div className="w-10 h-10 flex items-center justify-center flex-shrink-0" style={{ background: isProf ? '#FF5722' : '#15171C' }}>
-        {isProf ? <Layers size={16} color="#fff" /> : <FileCheck size={16} color="#EDE9DE" />}
+      <div className="w-10 h-10 flex items-center justify-center flex-shrink-0" style={{ background: isProf ? '#FF5722' : isImg ? 'rgba(21,23,28,0.4)' : '#15171C' }}>
+        {isProf ? <Layers size={16} color="#fff" /> : isImg ? <ImageIcon size={16} color="#EDE9DE" /> : <FileCheck size={16} color="#EDE9DE" />}
       </div>
       <div className="flex-1 min-w-0">
         <div className="mp-display font-bold text-sm truncate">{file.name}</div>
@@ -928,6 +977,11 @@ function FileRow({ file, onRemove }) {
           {isProf && (
             <span className="mp-mono text-[9px] uppercase tracking-[0.2em] px-1.5 py-0.5" style={{ background: '#FF5722', color: '#fff' }}>
               Print profile
+            </span>
+          )}
+          {isImg && (
+            <span className="mp-mono text-[9px] uppercase tracking-[0.2em] px-1.5 py-0.5" style={{ background: 'rgba(21,23,28,0.4)', color: '#fff' }}>
+              Reference image
             </span>
           )}
         </div>
@@ -986,9 +1040,88 @@ function aiSuggestTags(title) {
   return AI_TAG_SUGGESTIONS.default;
 }
 
+function CategorySelect({ value, onChange, options }) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const wrapRef = useRef(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e) => { if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, [open]);
+
+  const filtered = options.filter(o => o.toLowerCase().includes(query.trim().toLowerCase()));
+
+  return (
+    <div className="relative" ref={wrapRef}>
+      <button
+        type="button"
+        onClick={() => { setOpen(o => !o); setQuery(''); }}
+        className="mp-input flex items-center justify-between text-left"
+        style={{ color: value ? '#15171C' : 'rgba(21,23,28,0.45)' }}
+      >
+        <span className="truncate">{value || 'Choose a category…'}</span>
+        <ChevronDown size={14} style={{ color: 'rgba(21,23,28,0.45)' }} className="flex-shrink-0" />
+      </button>
+      {open && (
+        <div className="absolute z-30 left-0 right-0 mt-1 mp-card shadow-lg" style={{ background: '#FFFFFF' }}>
+          <div className="flex items-center gap-2 px-2.5 py-2 border-b" style={{ borderColor: 'rgba(21,23,28,0.1)' }}>
+            <Search size={13} style={{ color: 'rgba(21,23,28,0.45)' }} />
+            <input
+              autoFocus
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search categories…"
+              className="bg-transparent outline-none text-xs flex-1"
+            />
+          </div>
+          <div className="max-h-56 overflow-y-auto py-1">
+            {filtered.length === 0 && (
+              <div className="px-3 py-2 text-[11px]" style={{ color: 'rgba(21,23,28,0.5)' }}>No match for “{query}”.</div>
+            )}
+            {filtered.map(o => (
+              <button
+                key={o}
+                type="button"
+                onClick={() => { onChange(o); setOpen(false); }}
+                className="w-full text-left px-3 py-1.5 text-xs hover:bg-[rgba(255,87,34,0.08)] transition flex items-center justify-between"
+                style={{ background: value === o ? 'rgba(255,87,34,0.06)' : 'transparent' }}
+              >
+                <span>{o}</span>
+                {value === o && <Check size={12} style={{ color: '#FF5722' }} />}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+const LICENSE_FILTERS = [
+  { id: 'all', label: 'All' },
+  { id: 'commercial', label: '$ Commercial OK' },
+  { id: 'noncommercial', label: 'Non-commercial' },
+  { id: 'remix', label: '↻ Remix OK' },
+  { id: 'noderiv', label: 'No derivatives' },
+];
+
+function matchesLicenseFilter(l, f) {
+  if (f === 'commercial') return l.commercial;
+  if (f === 'noncommercial') return !l.commercial;
+  if (f === 'remix') return l.derivatives;
+  if (f === 'noderiv') return !l.derivatives;
+  return true;
+}
+
 function DetailsSection({ project, updateProject, setCurrentSection }) {
   const [tagInput, setTagInput] = useState('');
   const [previewMode, setPreviewMode] = useState('write'); // write | preview | formats
+  const [licenseFilter, setLicenseFilter] = useState('all');
+
+  const visibleLicenses = LICENSES.filter(l => matchesLicenseFilter(l, licenseFilter));
 
   const addTag = (raw) => {
     const t = raw.trim().toLowerCase().replace(/\s+/g, '-');
@@ -1118,10 +1251,7 @@ function DetailsSection({ project, updateProject, setCurrentSection }) {
         <div className="space-y-5">
           <div>
             <Label>Category</Label>
-            <select className="mp-input" value={project.category} onChange={(e) => updateProject({ category: e.target.value })}>
-              <option value="">Choose a category…</option>
-              {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-            </select>
+            <CategorySelect value={project.category} onChange={(c) => updateProject({ category: c })} options={CATEGORIES} />
             <p className="text-[10px] mt-1.5" style={{ color: 'rgba(21,23,28,0.4)' }}>
               Each platform has its own category tree. We pick a close match for each.
             </p>
@@ -1129,8 +1259,26 @@ function DetailsSection({ project, updateProject, setCurrentSection }) {
 
           <div>
             <Label>License</Label>
+            <div className="flex flex-wrap gap-1.5 mb-2.5">
+              {LICENSE_FILTERS.map(f => (
+                <button
+                  key={f.id}
+                  onClick={() => setLicenseFilter(f.id)}
+                  className="mp-mono text-[9px] uppercase tracking-[0.15em] px-2 py-1 transition"
+                  style={{
+                    background: licenseFilter === f.id ? '#15171C' : 'rgba(21,23,28,0.06)',
+                    color: licenseFilter === f.id ? '#EDE9DE' : 'rgba(21,23,28,0.65)',
+                  }}
+                >
+                  {f.label}
+                </button>
+              ))}
+            </div>
             <div className="space-y-1.5">
-              {LICENSES.map(l => (
+              {visibleLicenses.length === 0 && (
+                <p className="text-[11px] py-2" style={{ color: 'rgba(21,23,28,0.5)' }}>No license matches that combination.</p>
+              )}
+              {visibleLicenses.map(l => (
                 <label key={l.id} className="flex items-start gap-2.5 mp-card p-2.5 cursor-pointer transition" style={{
                   borderColor: project.license === l.id ? '#FF5722' : 'rgba(21,23,28,0.1)',
                   background: project.license === l.id ? 'rgba(255,87,34,0.04)' : '#FFFFFF',
@@ -1278,6 +1426,15 @@ function ImagesSection({ project, updateProject, setCurrentSection }) {
 
   const setAsCover = (id) => updateProject({ coverImageId: id });
 
+  const moveImage = (id, dir) => {
+    const imgs = [...project.images];
+    const idx = imgs.findIndex(i => i.id === id);
+    const swap = idx + dir;
+    if (idx < 0 || swap < 0 || swap >= imgs.length) return;
+    [imgs[idx], imgs[swap]] = [imgs[swap], imgs[idx]];
+    updateProject({ images: imgs });
+  };
+
   const activeImage = project.images.find(i => i.id === activeImageId) || project.images[0];
 
   return (
@@ -1311,32 +1468,63 @@ function ImagesSection({ project, updateProject, setCurrentSection }) {
               <input ref={fileInputRef} type="file" multiple accept="image/*" onChange={(e) => handleImageFiles(e.target.files)} className="hidden" />
             </div>
 
+            <p className="mp-mono text-[9px] uppercase tracking-[0.15em] mb-1" style={{ color: 'rgba(21,23,28,0.4)' }}>
+              Order = gallery order on every platform. Reorder with ↑ ↓.
+            </p>
             <div className="space-y-1.5 max-h-[600px] overflow-y-auto pr-1">
-              {project.images.map((img, idx) => (
-                <button
-                  key={img.id}
-                  onClick={() => setActiveImageId(img.id)}
-                  className="w-full flex items-center gap-2 p-1.5 transition relative group"
-                  style={{
-                    background: activeImageId === img.id ? '#15171C' : '#FFFFFF',
-                    color: activeImageId === img.id ? '#EDE9DE' : '#15171C',
-                    border: '1px solid rgba(21,23,28,0.1)',
-                  }}
-                >
-                  <div className="w-14 h-14 flex-shrink-0 overflow-hidden" style={{ background: '#15171C' }}>
-                    <img src={img.dataUrl} alt="" className="w-full h-full object-cover" />
-                  </div>
-                  <div className="flex-1 text-left min-w-0">
-                    <div className="mp-mono text-[9px] uppercase tracking-[0.15em] opacity-60">{String(idx + 1).padStart(2, '0')}</div>
-                    <div className="text-[11px] truncate">{img.alt || 'Image'}</div>
-                    {project.coverImageId === img.id && (
-                      <div className="mp-mono text-[8px] uppercase tracking-[0.15em] mt-0.5 inline-flex items-center gap-1" style={{ color: '#FF5722' }}>
-                        <Star size={8} fill="#FF5722" /> Cover
+              {project.images.map((img, idx) => {
+                const active = activeImageId === img.id;
+                return (
+                  <div
+                    key={img.id}
+                    className="w-full flex items-center gap-2 p-1.5 transition relative group"
+                    style={{
+                      background: active ? '#15171C' : '#FFFFFF',
+                      color: active ? '#EDE9DE' : '#15171C',
+                      border: '1px solid rgba(21,23,28,0.1)',
+                    }}
+                  >
+                    <button
+                      onClick={() => setActiveImageId(img.id)}
+                      className="flex items-center gap-2 flex-1 min-w-0 text-left"
+                      style={{ color: 'inherit' }}
+                    >
+                      <div className="w-14 h-14 flex-shrink-0 overflow-hidden" style={{ background: '#15171C' }}>
+                        <img src={img.dataUrl} alt="" className="w-full h-full object-cover" />
                       </div>
-                    )}
+                      <div className="flex-1 min-w-0">
+                        <div className="mp-mono text-[9px] uppercase tracking-[0.15em] opacity-60">{String(idx + 1).padStart(2, '0')}</div>
+                        <div className="text-[11px] truncate">{img.alt || 'Image'}</div>
+                        {project.coverImageId === img.id && (
+                          <div className="mp-mono text-[8px] uppercase tracking-[0.15em] mt-0.5 inline-flex items-center gap-1" style={{ color: '#FF5722' }}>
+                            <Star size={8} fill="#FF5722" /> Cover
+                          </div>
+                        )}
+                      </div>
+                    </button>
+                    <div className="flex flex-col flex-shrink-0">
+                      <button
+                        onClick={() => moveImage(img.id, -1)}
+                        disabled={idx === 0}
+                        aria-label="Move up"
+                        className="p-0.5 transition disabled:opacity-20 disabled:cursor-not-allowed hover:text-[#FF5722]"
+                        style={{ color: 'inherit' }}
+                      >
+                        <ChevronUp size={14} />
+                      </button>
+                      <button
+                        onClick={() => moveImage(img.id, 1)}
+                        disabled={idx === project.images.length - 1}
+                        aria-label="Move down"
+                        className="p-0.5 transition disabled:opacity-20 disabled:cursor-not-allowed hover:text-[#FF5722]"
+                        style={{ color: 'inherit' }}
+                      >
+                        <ChevronDown size={14} />
+                      </button>
+                    </div>
                   </div>
-                </button>
-              ))}
+                );
+              })}
             </div>
 
             {project.images.length >= 9 && (
@@ -1865,6 +2053,14 @@ function PlatformCard({ platform, state, onToggle, onUpdate }) {
                 <option value="elegoo-summer">Elegoo Summer Showcase</option>
                 <option value="best-functional">Best Functional Print 2026</option>
               </select>
+              {state.contestEntry && (
+                <div className="mt-2 p-2.5 flex items-start gap-2 text-[11px]" style={{ background: 'rgba(255,182,39,0.12)', border: '1px solid rgba(255,182,39,0.5)' }}>
+                  <AlertCircle size={14} style={{ color: '#FF9500' }} className="flex-shrink-0 mt-0.5" />
+                  <span style={{ color: 'rgba(21,23,28,0.8)' }}>
+                    <strong>{platform.name} contest entries must be opted in during upload.</strong> This package can't enter you automatically — when you upload, tick the contest checkbox on {platform.name}'s page. You can't add an entry after the model is published.
+                  </span>
+                </div>
+              )}
             </div>
           )}
 
