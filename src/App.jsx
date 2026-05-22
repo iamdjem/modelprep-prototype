@@ -412,6 +412,9 @@ function generateReadme(platform, project, descExt, imageCount, fileCount) {
       : `- description.${descExt} (in ${platform.descFormat} format, ready to paste)`,
     `- metadata.txt (title, category, tags, license, all paste-ready)`,
     `- files/ folder with ${fileCount} model file(s)`,
+    ...((project.profiles || []).some(p => !p.useMainCover && p.coverImageId)
+      ? [`- profile_covers/ folder — a per-profile cover image for each 3MF that has its own`]
+      : []),
     '',
     `UPLOAD STEPS`,
     '-'.repeat(40),
@@ -440,6 +443,80 @@ function generateReadme(platform, project, descExt, imageCount, fileCount) {
   }
   lines.push('', 'Final step: click Submit / Publish on the platform.');
   return lines.join('\n');
+}
+
+// Build one platform's complete upload package as a zip Blob. Single source of
+// truth for the export (was duplicated in BatchZipButton + PlatformPackageCard).
+// onProgress(msg) is called with human-readable progress strings.
+async function buildPlatformZip(JSZip, platform, project, cover, onProgress = () => {}) {
+  const zip = new JSZip();
+  let counter = 1;
+  const main = platform.covers[0];
+
+  // 1. Main cover(s) cropped to each of the platform's cover dimensions.
+  if (cover) {
+    onProgress('Cropping cover');
+    const coverImg = await loadImageFromDataUrl(cover.dataUrl);
+    for (const c of platform.covers) {
+      const canvas = cropToCanvas(coverImg, c.w, c.h, cover.focal);
+      const blob = await canvasToBlob(canvas);
+      const label = platform.covers.length > 1 ? `cover_${c.id}` : 'cover';
+      zip.file(`${String(counter++).padStart(2, '0')}_${label}_${c.w}x${c.h}.jpg`, blob);
+    }
+  }
+
+  // 2. Gallery images (cover excluded), capped at the platform's max.
+  const others = project.images.filter(i => i.id !== project.coverImageId);
+  const galleryLimit = Math.min(others.length, platform.maxImages - 1);
+  for (let i = 0; i < galleryLimit; i++) {
+    onProgress(`Cropping gallery ${i + 1}/${galleryLimit}`);
+    const galImg = await loadImageFromDataUrl(others[i].dataUrl);
+    const canvas = cropToCanvas(galImg, main.w, main.h, others[i].focal);
+    const blob = await canvasToBlob(canvas);
+    zip.file(`${String(counter++).padStart(2, '0')}_gallery_${String(i + 1).padStart(2, '0')}_${main.w}x${main.h}.jpg`, blob);
+  }
+
+  // 3. Per-profile covers — each 3MF profile that opted for its own image.
+  const profileCovers = (project.profiles || []).filter(p => !p.useMainCover && p.coverImageId);
+  if (profileCovers.length) {
+    const pfolder = zip.folder('profile_covers');
+    for (const prof of profileCovers) {
+      const pimg = project.images.find(im => im.id === prof.coverImageId);
+      if (!pimg) continue;
+      onProgress(`Cropping profile cover: ${prof.name}`);
+      const loaded = await loadImageFromDataUrl(pimg.dataUrl);
+      const canvas = cropToCanvas(loaded, main.w, main.h, pimg.focal);
+      const blob = await canvasToBlob(canvas);
+      pfolder.file(`${slugify(prof.name) || 'profile'}_${main.w}x${main.h}.jpg`, blob);
+    }
+  }
+
+  // 4. Description in the platform's format.
+  onProgress('Writing description');
+  const descExt = platform.descFormat === 'markdown' ? 'md' : platform.descFormat === 'html' ? 'html' : 'txt';
+  const desc = platform.descFormat === 'markdown' ? project.description
+    : platform.descFormat === 'html' ? mdToHtml(project.description)
+    : mdToPlain(project.description);
+  zip.file(`description.${descExt}`, desc);
+
+  // 5. Metadata + README.
+  const platformState = project.platforms[platform.id];
+  const tagString = formatTagsFor(platform.id, project.tags);
+  zip.file('metadata.txt', generateMetadataText(platform, project, platformState, tagString));
+  zip.file('README.txt', generateReadme(platform, project, descExt, project.images.length, project.files.length));
+
+  // 6. Model files.
+  if (project.files.length) {
+    const folder = zip.folder('files');
+    for (const f of project.files) if (f.blob) folder.file(f.name, f.blob);
+  }
+
+  // 7. Compress.
+  onProgress('Compressing 0%');
+  return zip.generateAsync(
+    { type: 'blob', compression: 'DEFLATE', compressionOptions: { level: 6 } },
+    (m) => onProgress(`Compressing ${m.percent.toFixed(0)}%`)
+  );
 }
 
 function triggerDownload(blob, filename) {
@@ -2636,56 +2713,11 @@ function BatchZipButton({ enabled, project, cover }) {
 
       for (let pIdx = 0; pIdx < enabled.length; pIdx++) {
         const platform = enabled[pIdx];
-        const platformState = project.platforms[platform.id];
         setMsg(`[${pIdx + 1}/${enabled.length}] ${platform.name}`);
-
-        const zip = new JSZip();
-        let counter = 1;
-
-        // Cover(s)
-        const coverImg = await loadImageFromDataUrl(cover.dataUrl);
-        for (const c of platform.covers) {
-          const canvas = cropToCanvas(coverImg, c.w, c.h, cover.focal);
-          const blob = await canvasToBlob(canvas);
-          const label = platform.covers.length > 1 ? `cover_${c.id}` : 'cover';
-          zip.file(`${String(counter++).padStart(2, '0')}_${label}_${c.w}x${c.h}.jpg`, blob);
-        }
-
-        // Gallery
-        const others = project.images.filter(i => i.id !== project.coverImageId);
-        const limit = Math.min(others.length, platform.maxImages - 1);
-        const main = platform.covers[0];
-        for (let i = 0; i < limit; i++) {
-          const galImg = await loadImageFromDataUrl(others[i].dataUrl);
-          const canvas = cropToCanvas(galImg, main.w, main.h, others[i].focal);
-          const blob = await canvasToBlob(canvas);
-          zip.file(`${String(counter++).padStart(2, '0')}_gallery_${String(i + 1).padStart(2, '0')}_${main.w}x${main.h}.jpg`, blob);
-        }
-
-        // Texts
-        const descFormat = platform.descFormat;
-        const descExt = descFormat === 'markdown' ? 'md' : descFormat === 'html' ? 'html' : 'txt';
-        const desc = descFormat === 'markdown' ? project.description : descFormat === 'html' ? mdToHtml(project.description) : mdToPlain(project.description);
-        const tagString = formatTagsFor(platform.id, project.tags);
-        zip.file(`description.${descExt}`, desc);
-        zip.file('metadata.txt', generateMetadataText(platform, project, platformState, tagString));
-        zip.file('README.txt', generateReadme(platform, project, descExt, project.images.length, project.files.length));
-
-        // Model files
-        if (project.files.length) {
-          const folder = zip.folder('files');
-          for (const f of project.files) {
-            if (f.blob) folder.file(f.name, f.blob);
-          }
-        }
-
-        const zipBlob = await zip.generateAsync(
-          { type: 'blob', compression: 'DEFLATE', compressionOptions: { level: 6 } },
-          (m) => setMsg(`[${pIdx + 1}/${enabled.length}] ${platform.name} ${m.percent.toFixed(0)}%`)
-        );
-
+        const zipBlob = await buildPlatformZip(JSZip, platform, project, cover,
+          (m) => setMsg(`[${pIdx + 1}/${enabled.length}] ${platform.name} · ${m}`));
         triggerDownload(zipBlob, `${fileNamePrefix}_${platform.id}.zip`);
-        // Brief gap between downloads to keep browser happy
+        // Brief gap between downloads to keep the browser happy.
         await new Promise(r => setTimeout(r, 600));
       }
 
@@ -2772,64 +2804,7 @@ function PlatformPackageCard({ platform, project, cover, platformState }) {
     setProgressMsg('Loading ZIP library');
     try {
       const JSZip = await loadJSZip();
-      const zip = new JSZip();
-
-      let counter = 1;
-
-      // 1. Cover image(s) cropped to platform's exact dimensions
-      if (cover) {
-        setProgressMsg('Cropping cover');
-        const coverImg = await loadImageFromDataUrl(cover.dataUrl);
-        for (const c of platform.covers) {
-          const canvas = cropToCanvas(coverImg, c.w, c.h, cover.focal);
-          const blob = await canvasToBlob(canvas);
-          const label = platform.covers.length > 1 ? `cover_${c.id}` : 'cover';
-          zip.file(`${String(counter++).padStart(2, '0')}_${label}_${c.w}x${c.h}.jpg`, blob);
-        }
-      }
-
-      // 2. Gallery images cropped to platform's main cover aspect
-      const others = project.images.filter(i => i.id !== project.coverImageId);
-      const limit = Math.min(others.length, platform.maxImages - 1);
-      const main = platform.covers[0];
-      for (let i = 0; i < limit; i++) {
-        setProgressMsg(`Cropping gallery ${i + 1}/${limit}`);
-        const galImg = await loadImageFromDataUrl(others[i].dataUrl);
-        const canvas = cropToCanvas(galImg, main.w, main.h, others[i].focal);
-        const blob = await canvasToBlob(canvas);
-        zip.file(`${String(counter++).padStart(2, '0')}_gallery_${String(i + 1).padStart(2, '0')}_${main.w}x${main.h}.jpg`, blob);
-      }
-
-      // 3. Description in the right format
-      setProgressMsg('Writing description');
-      const descExt = platform.descFormat === 'markdown' ? 'md' : platform.descFormat === 'html' ? 'html' : 'txt';
-      zip.file(`description.${descExt}`, desc);
-
-      // 4. Metadata (paste-ready fields)
-      zip.file('metadata.txt', generateMetadataText(platform, project, platformState, tagString));
-
-      // 5. README with step-by-step upload instructions
-      zip.file('README.txt', generateReadme(platform, project, descExt, project.images.length, project.files.length));
-
-      // 6. Model files in a subfolder
-      if (project.files.length > 0) {
-        setProgressMsg('Packing model files');
-        const filesFolder = zip.folder('files');
-        for (const f of project.files) {
-          if (f.blob) {
-            filesFolder.file(f.name, f.blob);
-          }
-        }
-      }
-
-      // 7. Compress
-      setProgressMsg('Compressing 0%');
-      const zipBlob = await zip.generateAsync(
-        { type: 'blob', compression: 'DEFLATE', compressionOptions: { level: 6 } },
-        (m) => setProgressMsg(`Compressing ${m.percent.toFixed(0)}%`)
-      );
-
-      // 8. Download
+      const zipBlob = await buildPlatformZip(JSZip, platform, project, cover, setProgressMsg);
       triggerDownload(zipBlob, `${fileNamePrefix}_${platform.id}.zip`);
       setProgressMsg(`Done: ${formatBytes(zipBlob.size)}`);
       setTimeout(() => setProgressMsg(null), 2500);
