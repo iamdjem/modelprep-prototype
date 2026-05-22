@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useMemo, useReducer } from 'react';
 import {
   Upload, Download, Copy, Image as ImageIcon, FileText, Check, Sparkles,
   Folder, Send, Star, X, Plus, Trash2, ChevronRight, ChevronDown, ChevronUp,
@@ -573,14 +573,30 @@ function projectHasContent(p) {
     Object.values(p.platforms).some(pl => pl.price || pl.contestEntry || pl.remix));
 }
 
+// Single reducer for the whole project. All state transitions go through here so
+// updates are centralized and an APPLY (functional) update always sees fresh
+// state. `updateProject`/`setProject` below are thin dispatchers over it.
+function projectReducer(state, action) {
+  switch (action.type) {
+    case 'SET':   return action.value;                  // full replace
+    case 'PATCH': return { ...state, ...action.patch }; // shallow merge
+    case 'APPLY': return action.updater(state);         // functional, fresh state
+    default:      return state;
+  }
+}
+
 export default function App() {
-  const [project, setProject] = useState(initialProject);
+  const [project, dispatchProject] = useReducer(projectReducer, initialProject);
   const [currentSection, setCurrentSection] = useState('files');
   const [templates, setTemplates] = useState([]);
   const [showTemplates, setShowTemplates] = useState(false);
   const [dialog, setDialog] = useState(null); // styled prompt/confirm modal
 
-  const updateProject = (patch) => setProject(p => ({ ...p, ...patch }));
+  // Thin dispatchers — keep the existing call-site shapes working:
+  //   updateProject({ ...patch })         shallow-merge
+  //   setProject(prev => next) / setProject(obj)   functional or full replace
+  const updateProject = (patch) => dispatchProject({ type: 'PATCH', patch });
+  const setProject = (v) => dispatchProject(typeof v === 'function' ? { type: 'APPLY', updater: v } : { type: 'SET', value: v });
 
   // Auto-generate profile entries when 3MF files are added
   useEffect(() => {
