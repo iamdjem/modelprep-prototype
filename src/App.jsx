@@ -545,14 +545,14 @@ export default function App() {
         onNewProject={newProject}
       />
 
-      <div className="flex max-w-[1400px] mx-auto" style={{ minHeight: 'calc(100vh - 81px - 32px)' }}>
+      <div className="flex flex-col lg:flex-row max-w-[1400px] mx-auto" style={{ minHeight: 'calc(100vh - 81px - 32px)' }}>
         <Sidebar
           currentSection={currentSection}
           setCurrentSection={setCurrentSection}
           completion={completion}
         />
 
-        <main className="flex-1 p-8 overflow-x-hidden pb-16">
+        <main className="flex-1 min-w-0 p-4 sm:p-6 lg:p-8 overflow-x-hidden pb-16">
           {currentSection === 'files' && (
             <FilesSection project={project} updateProject={updateProject} setCurrentSection={setCurrentSection} />
           )}
@@ -597,18 +597,18 @@ function StatusBar({ project, completion, currentSection }) {
       borderColor: '#15171C',
       height: 32,
     }}>
-      <div className="max-w-[1400px] mx-auto h-full flex items-center justify-between px-6">
-        <div className="flex items-center gap-5 mp-mono text-[10px] uppercase tracking-[0.15em]">
+      <div className="max-w-[1400px] mx-auto h-full flex items-center justify-between px-4 sm:px-6 overflow-x-auto whitespace-nowrap">
+        <div className="flex items-center gap-3 sm:gap-5 mp-mono text-[12px] uppercase tracking-[0.15em]">
           <span className="flex items-center gap-1.5">
             <span className="w-1.5 h-1.5" style={{ background: '#4FB286' }} />
             READY
           </span>
+          <span className="hidden sm:inline" style={{ color: 'rgba(237,233,222,0.5)' }}>│</span>
+          <span className="hidden sm:inline">SECTION /{currentSection.toUpperCase()}</span>
           <span style={{ color: 'rgba(237,233,222,0.5)' }}>│</span>
-          <span>SECTION /{currentSection.toUpperCase()}</span>
-          <span style={{ color: 'rgba(237,233,222,0.5)' }}>│</span>
-          <span>{doneCount}/{totalSteps} STEPS COMPLETE</span>
+          <span>{doneCount}/{totalSteps} STEPS</span>
         </div>
-        <div className="flex items-center gap-5 mp-mono text-[10px] uppercase tracking-[0.15em]">
+        <div className="hidden sm:flex items-center gap-5 mp-mono text-[12px] uppercase tracking-[0.15em]">
           <span>FILES <span style={{ color: '#FF5722' }}>{project.files.length}</span></span>
           <span>IMG <span style={{ color: '#FF5722' }}>{project.images.length}</span></span>
           <span>SIZE <span style={{ color: '#FF5722' }}>{formatBytes(totalSize)}</span></span>
@@ -670,10 +670,10 @@ function GlobalStyles() {
       .mp-prose a { color: #FF5722; text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 2px; }
       .mp-pre { white-space: pre-wrap; word-break: break-word; }
 
-      .mp-input { background: #FFFFFF; border: 1px solid rgba(21,23,28,0.18); padding: 0.625rem 0.875rem; font-family: 'Space Grotesk', system-ui, sans-serif; font-size: 0.9rem; width: 100%; color: #15171C; }
+      .mp-input { background: #FFFFFF; border: 1px solid rgba(21,23,28,0.18); padding: 0.7rem 0.95rem; min-height: 44px; font-family: 'Space Grotesk', system-ui, sans-serif; font-size: 0.95rem; width: 100%; color: #15171C; }
       .mp-input:focus { outline: none; border-color: #FF5722; box-shadow: inset 0 0 0 1px #FF5722; }
 
-      .mp-btn { font-family: 'Big Shoulders Display'; font-weight: 800; font-size: 0.95rem; text-transform: uppercase; letter-spacing: 0.03em; padding: 0.625rem 1.125rem; background: #15171C; color: #EDE9DE; cursor: pointer; transition: background 0.15s; display: inline-flex; align-items: center; gap: 0.5rem; border: 1px solid #15171C; }
+      .mp-btn { font-family: 'Big Shoulders Display'; font-weight: 800; font-size: 1rem; text-transform: uppercase; letter-spacing: 0.03em; padding: 0.7rem 1.25rem; min-height: 44px; background: #15171C; color: #EDE9DE; cursor: pointer; transition: background 0.15s; display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem; border: 1px solid #15171C; }
       .mp-btn:hover:not(:disabled) { background: #FF5722; border-color: #FF5722; }
       .mp-btn:disabled { opacity: 0.35; cursor: not-allowed; }
       .mp-btn-ghost { background: transparent; color: #15171C; border: 1px solid rgba(21,23,28,0.25); }
@@ -682,7 +682,7 @@ function GlobalStyles() {
       .mp-card { background: #FFFFFF; border: 1px solid rgba(21,23,28,0.12); }
 
       /* Workshop-style status pill */
-      .mp-pill { font-family: 'JetBrains Mono'; font-size: 9px; text-transform: uppercase; letter-spacing: 0.15em; padding: 2px 6px; border-radius: 0; }
+      .mp-pill { font-family: 'JetBrains Mono'; font-size: 11px; text-transform: uppercase; letter-spacing: 0.12em; padding: 3px 8px; border-radius: 0; display: inline-flex; align-items: center; }
 
       @keyframes mp-spin { from { transform: rotate(0); } to { transform: rotate(360deg); } }
       .mp-spin { animation: mp-spin 1s linear infinite; }
@@ -705,7 +705,7 @@ function TopHeader({ project, updateProject, templates, showTemplates, setShowTe
   const [editingName, setEditingName] = useState(false);
   return (
     <header className="sticky top-0 z-20 border-b backdrop-blur" style={{ borderColor: 'rgba(21,23,28,0.1)', background: 'rgba(237,233,222,0.92)' }}>
-      <div className="max-w-[1400px] mx-auto px-6 py-3.5 flex items-center justify-between gap-4">
+      <div className="max-w-[1400px] mx-auto px-4 sm:px-6 py-3.5 flex items-center justify-between gap-4">
         <div className="flex items-center gap-3 min-w-0">
           <div className="w-10 h-10 flex items-center justify-center flex-shrink-0 relative" style={{ background: '#15171C' }}>
             {/* Layer-stack icon: 4 horizontal bars stacked, mimicking print layers */}
@@ -719,7 +719,7 @@ function TopHeader({ project, updateProject, templates, showTemplates, setShowTe
           <div className="min-w-0">
             <div className="flex items-baseline gap-2.5">
               <h1 className="mp-display text-[26px] leading-none">ModelPrep</h1>
-              <span className="mp-mono text-[9px] uppercase tracking-[0.2em]" style={{ color: 'rgba(21,23,28,0.45)' }}>v0.3 · build 04</span>
+              <span className="mp-mono text-[11px] uppercase tracking-[0.2em]" style={{ color: 'rgba(21,23,28,0.45)' }}>v0.3 · build 04</span>
             </div>
             <div className="flex items-center gap-1.5 mt-1">
               {editingName ? (
@@ -729,13 +729,13 @@ function TopHeader({ project, updateProject, templates, showTemplates, setShowTe
                   onChange={(e) => updateProject({ name: e.target.value })}
                   onBlur={() => setEditingName(false)}
                   onKeyDown={(e) => e.key === 'Enter' && setEditingName(false)}
-                  className="mp-mono text-[11px] bg-transparent outline-none border-b"
+                  className="mp-mono text-[13px] bg-transparent outline-none border-b"
                   style={{ borderColor: '#FF5722', width: 220 }}
                 />
               ) : (
                 <button
                   onClick={() => setEditingName(true)}
-                  className="mp-mono text-[11px] flex items-center gap-1 group"
+                  className="mp-mono text-[13px] flex items-center gap-1 group"
                   style={{ color: 'rgba(21,23,28,0.6)' }}
                 >
                   ▸ {project.name}
@@ -751,7 +751,7 @@ function TopHeader({ project, updateProject, templates, showTemplates, setShowTe
             <button onClick={() => setShowTemplates(s => !s)} className="mp-btn mp-btn-ghost text-xs py-2 px-3">
               <Bookmark size={13} /> Templates
               {templates.length > 0 && (
-                <span className="ml-1 mp-mono text-[10px]" style={{ color: '#FF5722' }}>{templates.length}</span>
+                <span className="ml-1 mp-mono text-[12px]" style={{ color: '#FF5722' }}>{templates.length}</span>
               )}
             </button>
             {showTemplates && (
@@ -769,7 +769,7 @@ function TopHeader({ project, updateProject, templates, showTemplates, setShowTe
                   templates.map(t => (
                     <button key={t.id} onClick={() => onLoadTemplate(t)} className="w-full text-left px-3 py-2 text-xs hover:bg-black/5 transition flex justify-between items-center">
                       <span>{t.name}</span>
-                      <span className="mp-mono text-[10px]" style={{ color: 'rgba(21,23,28,0.4)' }}>{t.data.tags?.length || 0} tags</span>
+                      <span className="mp-mono text-[12px]" style={{ color: 'rgba(21,23,28,0.4)' }}>{t.data.tags?.length || 0} tags</span>
                     </button>
                   ))
                 )}
@@ -791,12 +791,13 @@ function TopHeader({ project, updateProject, templates, showTemplates, setShowTe
 
 function Sidebar({ currentSection, setCurrentSection, completion }) {
   return (
-    <aside className="w-64 flex-shrink-0 border-r" style={{ borderColor: 'rgba(21,23,28,0.15)', minHeight: '100%' }}>
-      <nav className="py-6 px-3 sticky top-[81px]">
-        <div className="mp-mono text-[9px] uppercase tracking-[0.25em] px-3 mb-3 flex items-center gap-2" style={{ color: 'rgba(21,23,28,0.45)' }}>
+    <aside className="w-full lg:w-64 flex-shrink-0 border-b lg:border-b-0 lg:border-r" style={{ borderColor: 'rgba(21,23,28,0.15)', minHeight: '100%' }}>
+      <nav className="py-3 px-2 lg:py-6 lg:px-3 lg:sticky lg:top-[81px]">
+        <div className="hidden lg:flex mp-mono text-[11px] uppercase tracking-[0.25em] px-3 mb-3 items-center gap-2" style={{ color: 'rgba(21,23,28,0.45)' }}>
           <span>┌─ JOB SHEET</span>
           <div className="flex-1 mp-tickrule" />
         </div>
+        <div className="flex lg:block gap-1 lg:gap-0 overflow-x-auto lg:overflow-visible">
         {SECTIONS.map((s, i) => {
           const Icon = s.icon;
           const done = completion[s.id];
@@ -805,7 +806,7 @@ function Sidebar({ currentSection, setCurrentSection, completion }) {
             <button
               key={s.id}
               onClick={() => setCurrentSection(s.id)}
-              className="w-full text-left p-3 mb-0.5 flex items-start gap-3 transition-colors group relative"
+              className="flex-shrink-0 w-[210px] lg:w-full text-left p-3 mb-0.5 flex items-start gap-3 transition-colors group relative"
               style={{
                 background: active ? '#15171C' : 'transparent',
                 color: active ? '#EDE9DE' : '#15171C',
@@ -824,17 +825,18 @@ function Sidebar({ currentSection, setCurrentSection, completion }) {
               </div>
               <div className="min-w-0 flex-1">
                 <div className="flex items-baseline gap-2">
-                  <span className="mp-mono text-[9px] tracking-[0.15em] opacity-50">{String(i + 1).padStart(2, '0')}/</span>
+                  <span className="mp-mono text-[11px] tracking-[0.15em] opacity-50">{String(i + 1).padStart(2, '0')}/</span>
                   <span className="mp-display text-[17px] leading-none">{s.label}</span>
                 </div>
-                <div className="mp-body text-[11px] mt-1 leading-tight" style={{ color: active ? 'rgba(237,233,222,0.6)' : 'rgba(21,23,28,0.5)' }}>
+                <div className="mp-body text-[13px] mt-1 leading-tight" style={{ color: active ? 'rgba(237,233,222,0.6)' : 'rgba(21,23,28,0.5)' }}>
                   {s.description}
                 </div>
               </div>
             </button>
           );
         })}
-        <div className="mp-mono text-[9px] uppercase tracking-[0.25em] px-3 mt-3 flex items-center gap-2" style={{ color: 'rgba(21,23,28,0.45)' }}>
+        </div>
+        <div className="hidden lg:flex mp-mono text-[11px] uppercase tracking-[0.25em] px-3 mt-3 items-center gap-2" style={{ color: 'rgba(21,23,28,0.45)' }}>
           <span>└─</span>
           <div className="flex-1 mp-tickrule" />
         </div>
@@ -930,7 +932,7 @@ function FilesSection({ project, updateProject, setCurrentSection }) {
         </div>
         <h2 className="mp-display text-[36px] leading-none mb-2">Load build files</h2>
         <p className="mp-body text-sm mb-3" style={{ color: 'rgba(21,23,28,0.65)' }}>drag &amp; drop · or click anywhere in the work area · max {MAX_BUILD_FILE_MB}MB per file</p>
-        <div className="inline-flex items-center gap-1.5 mp-mono text-[10px] uppercase tracking-[0.2em] flex-wrap justify-center" style={{ color: 'rgba(21,23,28,0.5)' }}>
+        <div className="inline-flex items-center gap-1.5 mp-mono text-[12px] uppercase tracking-[0.2em] flex-wrap justify-center" style={{ color: 'rgba(21,23,28,0.5)' }}>
           {['stl', '3mf', 'obj', 'step', 'amf', 'scad', 'svg', 'dxf', 'pdf'].map(ext => (
             <span key={ext} className="mp-pill" style={{ background: 'rgba(21,23,28,0.06)' }}>.{ext}</span>
           ))}
@@ -964,10 +966,10 @@ function FilesSection({ project, updateProject, setCurrentSection }) {
       {project.files.length > 0 && (
         <div className="mt-6">
           <div className="flex items-center justify-between mb-3">
-            <span className="mp-mono text-[11px] uppercase tracking-[0.2em]" style={{ color: 'rgba(21,23,28,0.55)' }}>
+            <span className="mp-mono text-[13px] uppercase tracking-[0.2em]" style={{ color: 'rgba(21,23,28,0.55)' }}>
               {project.files.length} file{project.files.length === 1 ? '' : 's'} · {formatBytes(totalSize)} total
             </span>
-            <button onClick={() => updateProject({ files: [] })} className="mp-mono text-[10px] uppercase tracking-[0.2em] opacity-60 hover:opacity-100 transition">
+            <button onClick={() => updateProject({ files: [] })} className="mp-mono text-[12px] uppercase tracking-[0.2em] opacity-60 hover:opacity-100 transition">
               Clear all
             </button>
           </div>
@@ -1032,16 +1034,16 @@ function FileRow({ file, onRemove, onRename }) {
           </button>
         )}
         <div className="flex items-center gap-2 mt-0.5">
-          <span className="mp-mono text-[10px] uppercase tracking-[0.15em]" style={{ color: 'rgba(21,23,28,0.5)' }}>
+          <span className="mp-mono text-[12px] uppercase tracking-[0.15em]" style={{ color: 'rgba(21,23,28,0.5)' }}>
             .{ext} · {formatBytes(file.size)}
           </span>
           {isProf && (
-            <span className="mp-mono text-[9px] uppercase tracking-[0.2em] px-1.5 py-0.5" style={{ background: '#FF5722', color: '#fff' }}>
+            <span className="mp-mono text-[11px] uppercase tracking-[0.2em] px-1.5 py-0.5" style={{ background: '#FF5722', color: '#fff' }}>
               Print profile
             </span>
           )}
           {isImg && (
-            <span className="mp-mono text-[9px] uppercase tracking-[0.2em] px-1.5 py-0.5" style={{ background: 'rgba(21,23,28,0.4)', color: '#fff' }}>
+            <span className="mp-mono text-[11px] uppercase tracking-[0.2em] px-1.5 py-0.5" style={{ background: 'rgba(21,23,28,0.4)', color: '#fff' }}>
               Reference image
             </span>
           )}
@@ -1074,7 +1076,7 @@ function FileSizeWarnings({ files, totalSize }) {
         <div className="mp-display font-bold mb-1">Size warnings</div>
         {warnings.map((w, i) => (
           <div key={i}>
-            <span className="mp-mono text-[10px] uppercase tracking-wider">{w.platform}</span>: {w.limit} exceeded ({w.current})
+            <span className="mp-mono text-[12px] uppercase tracking-wider">{w.platform}</span>: {w.limit} exceeded ({w.current})
           </div>
         ))}
       </div>
@@ -1143,7 +1145,7 @@ function CategorySelect({ value, onChange, options }) {
           </div>
           <div className="max-h-56 overflow-y-auto py-1">
             {filtered.length === 0 && (
-              <div className="px-3 py-2 text-[11px]" style={{ color: 'rgba(21,23,28,0.5)' }}>No match for “{query}”.</div>
+              <div className="px-3 py-2 text-[13px]" style={{ color: 'rgba(21,23,28,0.5)' }}>No match for “{query}”.</div>
             )}
             {filtered.map(o => (
               <button
@@ -1236,7 +1238,7 @@ function DetailsSection({ project, updateProject, setCurrentSection }) {
                   <button
                     key={m}
                     onClick={() => setPreviewMode(m)}
-                    className="mp-mono text-[10px] uppercase tracking-[0.15em] px-2 py-1 transition"
+                    className="mp-mono text-[12px] uppercase tracking-[0.15em] px-2 py-1 transition"
                     style={{
                       background: previewMode === m ? '#15171C' : 'transparent',
                       color: previewMode === m ? '#EDE9DE' : 'rgba(21,23,28,0.5)',
@@ -1248,7 +1250,7 @@ function DetailsSection({ project, updateProject, setCurrentSection }) {
                 {!project.description && (
                   <button
                     onClick={() => updateProject({ description: SAMPLE_DESCRIPTION })}
-                    className="mp-mono text-[10px] uppercase tracking-[0.15em] px-2 py-1 ml-1"
+                    className="mp-mono text-[12px] uppercase tracking-[0.15em] px-2 py-1 ml-1"
                     style={{ color: '#FF5722' }}
                   >
                     <Sparkles size={10} className="inline" /> Sample
@@ -1274,10 +1276,10 @@ function DetailsSection({ project, updateProject, setCurrentSection }) {
             )}
 
             <div className="flex items-center justify-between mt-1.5">
-              <span className="mp-mono text-[10px]" style={{ color: 'rgba(21,23,28,0.4)' }}>
+              <span className="mp-mono text-[12px]" style={{ color: 'rgba(21,23,28,0.4)' }}>
                 {project.description.length} chars
               </span>
-              <span className="mp-mono text-[10px]" style={{ color: 'rgba(21,23,28,0.4)' }}>
+              <span className="mp-mono text-[12px]" style={{ color: 'rgba(21,23,28,0.4)' }}>
                 Markdown for Printables/Cults/Nexprint · HTML for MakerWorld/MMF/Thangs/Creality · Plain for Thingiverse
               </span>
             </div>
@@ -1288,7 +1290,7 @@ function DetailsSection({ project, updateProject, setCurrentSection }) {
             <div className="mp-card p-3">
               <div className="flex flex-wrap gap-1.5 mb-2">
                 {project.tags.map(t => (
-                  <span key={t} className="inline-flex items-center gap-1 px-2 py-1 mp-mono text-[10px] uppercase tracking-[0.15em]" style={{ background: '#15171C', color: '#EDE9DE' }}>
+                  <span key={t} className="inline-flex items-center gap-1 px-2 py-1 mp-mono text-[12px] uppercase tracking-[0.15em]" style={{ background: '#15171C', color: '#EDE9DE' }}>
                     {t}
                     <button onClick={() => removeTag(t)} className="opacity-60 hover:opacity-100 transition"><X size={10} /></button>
                   </span>
@@ -1302,7 +1304,7 @@ function DetailsSection({ project, updateProject, setCurrentSection }) {
                   className="bg-transparent outline-none text-xs flex-1 min-w-[100px]"
                 />
               </div>
-              <div className="flex items-center justify-between text-[10px]" style={{ color: 'rgba(21,23,28,0.5)' }}>
+              <div className="flex items-center justify-between text-[12px]" style={{ color: 'rgba(21,23,28,0.5)' }}>
                 <span className="mp-mono uppercase tracking-[0.15em]">{project.tags.length}/20 tags</span>
                 <button onClick={suggestTags} className="mp-mono uppercase tracking-[0.15em] flex items-center gap-1 hover:text-[#FF5722] transition">
                   <Sparkles size={10} /> AI suggest (mock)
@@ -1316,7 +1318,7 @@ function DetailsSection({ project, updateProject, setCurrentSection }) {
           <div>
             <Label>Category</Label>
             <CategorySelect value={project.category} onChange={(c) => updateProject({ category: c })} options={CATEGORIES} />
-            <p className="text-[10px] mt-1.5" style={{ color: 'rgba(21,23,28,0.4)' }}>
+            <p className="text-[12px] mt-1.5" style={{ color: 'rgba(21,23,28,0.4)' }}>
               Each platform has its own category tree. We pick a close match for each.
             </p>
           </div>
@@ -1328,7 +1330,7 @@ function DetailsSection({ project, updateProject, setCurrentSection }) {
                 <button
                   key={f.id}
                   onClick={() => setLicenseFilter(f.id)}
-                  className="mp-mono text-[9px] uppercase tracking-[0.15em] px-2 py-1 transition"
+                  className="mp-mono text-[11px] uppercase tracking-[0.15em] px-2 py-1 transition"
                   style={{
                     background: licenseFilter === f.id ? '#15171C' : 'rgba(21,23,28,0.06)',
                     color: licenseFilter === f.id ? '#EDE9DE' : 'rgba(21,23,28,0.65)',
@@ -1340,7 +1342,7 @@ function DetailsSection({ project, updateProject, setCurrentSection }) {
             </div>
             <div className="space-y-1.5">
               {visibleLicenses.length === 0 && (
-                <p className="text-[11px] py-2" style={{ color: 'rgba(21,23,28,0.5)' }}>No license matches that combination.</p>
+                <p className="text-[13px] py-2" style={{ color: 'rgba(21,23,28,0.5)' }}>No license matches that combination.</p>
               )}
               {visibleLicenses.map(l => (
                 <label key={l.id} className="flex items-start gap-2.5 mp-card p-2.5 cursor-pointer transition" style={{
@@ -1351,10 +1353,10 @@ function DetailsSection({ project, updateProject, setCurrentSection }) {
                   <div className="flex-1 min-w-0">
                     <div className="text-xs font-semibold leading-tight">{l.name}</div>
                     <div className="flex gap-2 mt-1">
-                      <span className="mp-mono text-[9px] uppercase tracking-[0.15em]" style={{ color: l.commercial ? '#4FB286' : 'rgba(21,23,28,0.4)' }}>
+                      <span className="mp-mono text-[11px] uppercase tracking-[0.15em]" style={{ color: l.commercial ? '#4FB286' : 'rgba(21,23,28,0.4)' }}>
                         {l.commercial ? '$ commercial' : 'non-commercial'}
                       </span>
-                      <span className="mp-mono text-[9px] uppercase tracking-[0.15em]" style={{ color: l.derivatives ? '#4FB286' : 'rgba(21,23,28,0.4)' }}>
+                      <span className="mp-mono text-[11px] uppercase tracking-[0.15em]" style={{ color: l.derivatives ? '#4FB286' : 'rgba(21,23,28,0.4)' }}>
                         {l.derivatives ? '↻ remix ok' : 'no derivatives'}
                       </span>
                     </div>
@@ -1378,7 +1380,7 @@ function DetailsSection({ project, updateProject, setCurrentSection }) {
 }
 
 function Label({ children, className = '' }) {
-  return <label className={`mp-mono text-[10px] uppercase tracking-[0.2em] block mb-2 ${className}`} style={{ color: 'rgba(21,23,28,0.55)' }}>{children}</label>;
+  return <label className={`mp-mono text-[12px] uppercase tracking-[0.2em] block mb-2 ${className}`} style={{ color: 'rgba(21,23,28,0.55)' }}>{children}</label>;
 }
 
 function FormatTabs({ description }) {
@@ -1414,17 +1416,17 @@ function FormatTabs({ description }) {
             }}
           >
             {label}
-            <div className="text-[9px] font-normal opacity-60 mt-0.5">
+            <div className="text-[11px] font-normal opacity-60 mt-0.5">
               {platforms.join(', ')}
             </div>
           </button>
         ))}
       </div>
       <div className="p-3 flex items-center justify-between border-b gap-2" style={{ borderColor: 'rgba(21,23,28,0.1)' }}>
-        <span className="mp-mono text-[9px] uppercase tracking-[0.15em]" style={{ color: 'rgba(21,23,28,0.45)' }}>
+        <span className="mp-mono text-[11px] uppercase tracking-[0.15em]" style={{ color: 'rgba(21,23,28,0.45)' }}>
           {active === 'rich' ? 'Rendered — paste into the visual editor, keeps formatting' : active === 'html' ? 'Raw HTML source' : active === 'md' ? 'Markdown source' : 'Plain text'}
         </span>
-        <button onClick={() => copy(active)} className="mp-mono text-[10px] uppercase tracking-[0.2em] flex items-center gap-1.5 hover:text-[#FF5722] transition flex-shrink-0">
+        <button onClick={() => copy(active)} className="mp-mono text-[12px] uppercase tracking-[0.2em] flex items-center gap-1.5 hover:text-[#FF5722] transition flex-shrink-0">
           {copied === active ? <><Check size={11} /> Copied</> : <><Copy size={11} /> {copyLabel}</>}
         </button>
       </div>
@@ -1539,16 +1541,16 @@ function ImagesSection({ project, updateProject, setCurrentSection }) {
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 mt-6">
           <div className="lg:col-span-3 space-y-2">
             <div className="flex items-center justify-between">
-              <span className="mp-mono text-[10px] uppercase tracking-[0.2em]" style={{ color: 'rgba(21,23,28,0.55)' }}>
+              <span className="mp-mono text-[12px] uppercase tracking-[0.2em]" style={{ color: 'rgba(21,23,28,0.55)' }}>
                 {project.images.length}/16 images
               </span>
-              <button onClick={() => fileInputRef.current?.click()} className="mp-mono text-[10px] uppercase tracking-[0.15em] hover:text-[#FF5722] transition flex items-center gap-1">
+              <button onClick={() => fileInputRef.current?.click()} className="mp-mono text-[12px] uppercase tracking-[0.15em] hover:text-[#FF5722] transition flex items-center gap-1">
                 <Plus size={11} /> Add
               </button>
               <input ref={fileInputRef} type="file" multiple accept="image/*" onChange={(e) => handleImageFiles(e.target.files)} className="hidden" />
             </div>
 
-            <p className="mp-mono text-[9px] uppercase tracking-[0.15em] mb-1" style={{ color: 'rgba(21,23,28,0.4)' }}>
+            <p className="mp-mono text-[11px] uppercase tracking-[0.15em] mb-1" style={{ color: 'rgba(21,23,28,0.4)' }}>
               Order = gallery order on every platform. Reorder with ↑ ↓.
             </p>
             <div className="space-y-1.5 max-h-[600px] overflow-y-auto pr-1">
@@ -1573,10 +1575,10 @@ function ImagesSection({ project, updateProject, setCurrentSection }) {
                         <img src={img.dataUrl} alt="" className="w-full h-full object-cover" />
                       </div>
                       <div className="flex-1 min-w-0">
-                        <div className="mp-mono text-[9px] uppercase tracking-[0.15em] opacity-60">{String(idx + 1).padStart(2, '0')}</div>
-                        <div className="text-[11px] truncate">{img.alt || 'Image'}</div>
+                        <div className="mp-mono text-[11px] uppercase tracking-[0.15em] opacity-60">{String(idx + 1).padStart(2, '0')}</div>
+                        <div className="text-[13px] truncate">{img.alt || 'Image'}</div>
                         {project.coverImageId === img.id && (
-                          <div className="mp-mono text-[8px] uppercase tracking-[0.15em] mt-0.5 inline-flex items-center gap-1" style={{ color: '#FF5722' }}>
+                          <div className="mp-mono text-[11px] uppercase tracking-[0.15em] mt-0.5 inline-flex items-center gap-1" style={{ color: '#FF5722' }}>
                             <Star size={8} fill="#FF5722" /> Cover
                           </div>
                         )}
@@ -1608,7 +1610,7 @@ function ImagesSection({ project, updateProject, setCurrentSection }) {
             </div>
 
             {project.images.length >= 9 && (
-              <div className="mt-3 p-2.5 text-[10px]" style={{ background: 'rgba(255,87,34,0.08)', borderLeft: '2px solid #FF5722' }}>
+              <div className="mt-3 p-2.5 text-[12px]" style={{ background: 'rgba(255,87,34,0.08)', borderLeft: '2px solid #FF5722' }}>
                 <strong>Heads up:</strong> images above #9 only show on MakerWorld (max 16). Others typically display 9-12.
               </div>
             )}
@@ -1618,11 +1620,11 @@ function ImagesSection({ project, updateProject, setCurrentSection }) {
             {activeImage && (
               <>
                 <div className="flex items-center justify-between mb-3 gap-3 flex-wrap">
-                  <span className="mp-mono text-[11px] uppercase tracking-[0.2em]" style={{ color: 'rgba(21,23,28,0.55)' }}>
+                  <span className="mp-mono text-[13px] uppercase tracking-[0.2em]" style={{ color: 'rgba(21,23,28,0.55)' }}>
                     Image · {activeImage.naturalW} × {activeImage.naturalH} · drag the dot to set focal point
                   </span>
                   <div className="flex items-center gap-2">
-                    <button onClick={() => setAsCover(activeImage.id)} className="mp-mono text-[10px] uppercase tracking-[0.15em] py-1.5 px-2.5 flex items-center gap-1.5 transition" style={{
+                    <button onClick={() => setAsCover(activeImage.id)} className="mp-mono text-[12px] uppercase tracking-[0.15em] py-1.5 px-2.5 flex items-center gap-1.5 transition" style={{
                       background: project.coverImageId === activeImage.id ? '#FF5722' : '#15171C',
                       color: '#EDE9DE',
                     }}>
@@ -1641,10 +1643,10 @@ function ImagesSection({ project, updateProject, setCurrentSection }) {
                 />
 
                 <div className="flex items-center justify-between mt-6 mb-3">
-                  <span className="mp-mono text-[11px] uppercase tracking-[0.2em]" style={{ color: 'rgba(21,23,28,0.55)' }}>
+                  <span className="mp-mono text-[13px] uppercase tracking-[0.2em]" style={{ color: 'rgba(21,23,28,0.55)' }}>
                     Per-platform preview · {showPlatformPreviews ? PLATFORMS.length : 0} crops
                   </span>
-                  <button onClick={() => setShowPlatformPreviews(s => !s)} className="mp-mono text-[10px] uppercase tracking-[0.15em] hover:text-[#FF5722] transition flex items-center gap-1">
+                  <button onClick={() => setShowPlatformPreviews(s => !s)} className="mp-mono text-[12px] uppercase tracking-[0.15em] hover:text-[#FF5722] transition flex items-center gap-1">
                     {showPlatformPreviews ? <><ChevronDown size={11} /> Hide</> : <><ChevronRight size={11} /> Show</>}
                   </button>
                 </div>
@@ -1691,12 +1693,12 @@ function ImageDropZone({ onDrop, inputRef, onSamples }) {
         </div>
         <h2 className="mp-display text-[36px] leading-none mb-2">Load renders &amp; photos</h2>
         <p className="mp-body text-sm mb-3" style={{ color: 'rgba(21,23,28,0.65)' }}>jpg, png, webp · first image becomes the cover</p>
-        <p className="mp-mono text-[10px] uppercase tracking-[0.2em]" style={{ color: 'rgba(21,23,28,0.4)' }}>
+        <p className="mp-mono text-[12px] uppercase tracking-[0.2em]" style={{ color: 'rgba(21,23,28,0.4)' }}>
           ◯ min recommended 2000 × 1500 px
         </p>
       </div>
       <div className="text-center mt-3">
-        <button onClick={onSamples} className="mp-mono text-[10px] uppercase tracking-[0.2em] py-2 px-3 hover:text-[#FF5722] transition inline-flex items-center gap-1.5">
+        <button onClick={onSamples} className="mp-mono text-[12px] uppercase tracking-[0.2em] py-2 px-3 hover:text-[#FF5722] transition inline-flex items-center gap-1.5">
           <Sparkles size={11} /> Load 3 sample images
         </button>
       </div>
@@ -1747,7 +1749,7 @@ function FocalPicker({ image, onUpdate }) {
             <circle cx="22" cy="22" r="2" fill="#FF5722" />
           </svg>
         </div>
-        <div className="absolute bottom-2 left-2 mp-mono text-[10px] uppercase tracking-[0.2em] px-2 py-1 pointer-events-none" style={{ background: 'rgba(0,0,0,0.75)', color: '#FF5722' }}>
+        <div className="absolute bottom-2 left-2 mp-mono text-[12px] uppercase tracking-[0.2em] px-2 py-1 pointer-events-none" style={{ background: 'rgba(0,0,0,0.75)', color: '#FF5722' }}>
           ◉ FOCAL {(image.focal.x * 100).toFixed(0)}.{Math.floor((image.focal.x * 100 % 1) * 10)} × {(image.focal.y * 100).toFixed(0)}.{Math.floor((image.focal.y * 100 % 1) * 10)}
         </div>
       </div>
@@ -1783,10 +1785,10 @@ function PlatformCropPreview({ image, platform, cover }) {
         <div className="flex items-center gap-1.5 min-w-0">
           <div className="w-1.5 h-1.5 flex-shrink-0" style={{ background: platform.dot }} />
           <div className="min-w-0">
-            <div className="mp-display font-bold text-[11px] leading-tight truncate">
+            <div className="mp-display font-bold text-[13px] leading-tight truncate">
               {platform.name}{cover.label !== 'Cover' ? ` · ${cover.label}` : ''}
             </div>
-            <div className="mp-mono text-[9px] uppercase tracking-[0.15em]" style={{ color: 'rgba(21,23,28,0.5)' }}>
+            <div className="mp-mono text-[11px] uppercase tracking-[0.15em]" style={{ color: 'rgba(21,23,28,0.5)' }}>
               {cover.w}×{cover.h} ({cover.aspect})
             </div>
           </div>
@@ -1856,7 +1858,7 @@ function ProfilesSection({ project, updateProject, setCurrentSection }) {
                 <Layers size={14} className="mt-0.5 flex-shrink-0" />
                 <div className="min-w-0 flex-1">
                   <div className="mp-display font-bold text-xs truncate">{p.name || 'Untitled profile'}</div>
-                  <div className="mp-mono text-[9px] uppercase tracking-[0.15em] mt-0.5 opacity-60">
+                  <div className="mp-mono text-[11px] uppercase tracking-[0.15em] mt-0.5 opacity-60">
                     {p.parsed?.printer || ''}
                   </div>
                 </div>
@@ -1879,7 +1881,7 @@ function ProfilesSection({ project, updateProject, setCurrentSection }) {
 
               {active.parsed && (
                 <div className="mp-card p-4">
-                  <div className="mp-mono text-[10px] uppercase tracking-[0.2em] mb-3" style={{ color: 'rgba(21,23,28,0.55)' }}>
+                  <div className="mp-mono text-[12px] uppercase tracking-[0.2em] mb-3" style={{ color: 'rgba(21,23,28,0.55)' }}>
                     Detected from 3MF (mocked)
                   </div>
                   <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
@@ -1963,7 +1965,7 @@ function ProfilesSection({ project, updateProject, setCurrentSection }) {
 function Stat({ label, value }) {
   return (
     <div>
-      <div className="mp-mono text-[9px] uppercase tracking-[0.2em] mb-1" style={{ color: 'rgba(21,23,28,0.5)' }}>{label}</div>
+      <div className="mp-mono text-[11px] uppercase tracking-[0.2em] mb-1" style={{ color: 'rgba(21,23,28,0.5)' }}>{label}</div>
       <div className="mp-display font-bold text-sm">{value}</div>
     </div>
   );
@@ -2023,7 +2025,7 @@ function PlatformCard({ platform, state, onToggle, onUpdate }) {
   return (
     <div className="mp-card" style={{ borderColor: state.enabled ? 'rgba(21,23,28,0.2)' : 'rgba(21,23,28,0.08)', opacity: state.enabled ? 1 : 0.65 }}>
       <div className="p-3.5 flex items-start gap-3">
-        <button onClick={onToggle} className="flex-shrink-0 mt-0.5 mp-mono text-[10px] uppercase tracking-[0.15em] px-2.5 py-1.5 transition" style={{
+        <button onClick={onToggle} className="flex-shrink-0 mt-0.5 mp-mono text-[12px] uppercase tracking-[0.15em] px-2.5 py-1.5 transition" style={{
           background: state.enabled ? '#FF5722' : 'transparent',
           color: state.enabled ? '#fff' : 'rgba(21,23,28,0.5)',
           border: `1px solid ${state.enabled ? '#FF5722' : 'rgba(21,23,28,0.2)'}`,
@@ -2037,26 +2039,26 @@ function PlatformCard({ platform, state, onToggle, onUpdate }) {
               <div className="w-2 h-2 flex-shrink-0" style={{ background: platform.dot }} />
               <h3 className="mp-display font-bold text-base">{platform.name}</h3>
               {platform.apiSupport === 'oneclick' && (
-                <span className="mp-mono text-[8px] uppercase tracking-[0.15em] px-1.5 py-0.5 rounded" style={{ background: '#4FB286', color: '#fff' }}>
+                <span className="mp-mono text-[11px] uppercase tracking-[0.15em] px-1.5 py-0.5 rounded" style={{ background: '#4FB286', color: '#fff' }}>
                   API
                 </span>
               )}
               {platform.apiSupport === 'manual' && (
-                <span className="mp-mono text-[8px] uppercase tracking-[0.15em] px-1.5 py-0.5 rounded" style={{ background: 'rgba(21,23,28,0.1)', color: 'rgba(21,23,28,0.6)' }}>
+                <span className="mp-mono text-[11px] uppercase tracking-[0.15em] px-1.5 py-0.5 rounded" style={{ background: 'rgba(21,23,28,0.1)', color: 'rgba(21,23,28,0.6)' }}>
                   manual
                 </span>
               )}
               {platform.apiSupport === 'addon' && (
-                <span className="mp-mono text-[8px] uppercase tracking-[0.15em] px-1.5 py-0.5 rounded" style={{ background: 'rgba(58,134,255,0.15)', color: '#3A86FF' }}>
+                <span className="mp-mono text-[11px] uppercase tracking-[0.15em] px-1.5 py-0.5 rounded" style={{ background: 'rgba(58,134,255,0.15)', color: '#3A86FF' }}>
                   addon
                 </span>
               )}
             </div>
-            <button onClick={() => setExpanded(s => !s)} className="text-[10px] opacity-50 hover:opacity-100 transition flex-shrink-0">
+            <button onClick={() => setExpanded(s => !s)} className="text-[12px] opacity-50 hover:opacity-100 transition flex-shrink-0">
               {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
             </button>
           </div>
-          <div className="mp-mono text-[10px] uppercase tracking-[0.15em] mt-0.5" style={{ color: 'rgba(21,23,28,0.55)' }}>
+          <div className="mp-mono text-[12px] uppercase tracking-[0.15em] mt-0.5" style={{ color: 'rgba(21,23,28,0.55)' }}>
             {platform.org} · {platform.descFormat}
           </div>
           <p className="text-xs mt-1.5" style={{ color: 'rgba(21,23,28,0.65)' }}>{platform.note}</p>
@@ -2065,7 +2067,7 @@ function PlatformCard({ platform, state, onToggle, onUpdate }) {
 
       {expanded && (
         <div className="px-3.5 pb-3.5 border-t" style={{ borderColor: 'rgba(21,23,28,0.08)' }}>
-          <div className="grid grid-cols-3 gap-2 my-3 text-[10px]">
+          <div className="grid grid-cols-3 gap-2 my-3 text-[12px]">
             <Stat label="Max images" value={platform.maxImages} />
             <Stat label="File size cap" value={`${platform.maxFileMb}MB`} />
             <Stat label="Total cap" value={`${platform.maxTotalMb}MB`} />
@@ -2075,7 +2077,7 @@ function PlatformCard({ platform, state, onToggle, onUpdate }) {
             <Label>Accepted formats</Label>
             <div className="flex flex-wrap gap-1">
               {platform.formats.map(f => (
-                <span key={f} className="mp-mono text-[9px] uppercase tracking-[0.15em] px-1.5 py-0.5" style={{ background: 'rgba(21,23,28,0.06)' }}>
+                <span key={f} className="mp-mono text-[11px] uppercase tracking-[0.15em] px-1.5 py-0.5" style={{ background: 'rgba(21,23,28,0.06)' }}>
                   .{f}
                 </span>
               ))}
@@ -2134,7 +2136,7 @@ function PlatformCard({ platform, state, onToggle, onUpdate }) {
                 <option value="best-functional">Best Functional Print 2026</option>
               </select>
               {state.contestEntry && (
-                <div className="mt-2 p-2.5 flex items-start gap-2 text-[11px]" style={{ background: 'rgba(255,182,39,0.12)', border: '1px solid rgba(255,182,39,0.5)' }}>
+                <div className="mt-2 p-2.5 flex items-start gap-2 text-[13px]" style={{ background: 'rgba(255,182,39,0.12)', border: '1px solid rgba(255,182,39,0.5)' }}>
                   <AlertCircle size={14} style={{ color: '#FF9500' }} className="flex-shrink-0 mt-0.5" />
                   <span style={{ color: 'rgba(21,23,28,0.8)' }}>
                     <strong>{platform.name} contest entries must be opted in during upload.</strong> This package can't enter you automatically — when you upload, tick the contest checkbox on {platform.name}'s page. You can't add an entry after the model is published.
@@ -2183,7 +2185,7 @@ function PublishSection({ project, allReady, completion, setCurrentSection }) {
               </div>
               <div className="flex-1">
                 <div className="mp-display text-[18px] leading-none">{s.label}</div>
-                <div className="mp-body text-[11px] mt-1" style={{ color: 'rgba(21,23,28,0.55)' }}>
+                <div className="mp-body text-[13px] mt-1" style={{ color: 'rgba(21,23,28,0.55)' }}>
                   {completion[s.id] ? 'Complete' : 'Missing or incomplete'}
                 </div>
               </div>
@@ -2208,7 +2210,7 @@ function PublishSection({ project, allReady, completion, setCurrentSection }) {
         <div className="flex-1">
           <div className="flex items-center gap-3 mb-1">
             <Info size={14} style={{ color: '#FF5722' }} />
-            <span className="mp-display text-[15px] leading-none">One .zip per platform</span>
+            <span className="mp-display text-[16px] leading-none">One .zip per platform</span>
           </div>
           <p className="mp-body text-xs leading-relaxed" style={{ color: 'rgba(21,23,28,0.7)' }}>
             "Download .zip" packs the cover at exact dimensions, gallery images cropped for that platform, your description in the right format (md / html / txt), a metadata.txt with paste-ready fields, a README with upload steps, and a /files folder with your model files. Open the upload page and drop the folder contents in. Cults3D, MyMiniFactory and Thingiverse (green <span className="mp-pill" style={{ background: '#4FB286', color: '#fff' }}>API</span>) get one-click upload in a future build.
@@ -2274,8 +2276,8 @@ function BatchUploadPanel({ enabled, project }) {
       <div className="flex flex-col md:flex-row md:items-center gap-3 md:gap-5">
         <div className="flex-1">
           <div className="flex items-center gap-2 mb-1 flex-wrap">
-            <span className="mp-display text-[15px] leading-none">Upload to all API platforms</span>
-            <span className="mp-mono text-[8px] uppercase tracking-[0.2em] px-1.5 py-0.5" style={{ background: '#3A86FF', color: '#fff' }}>Demo</span>
+            <span className="mp-display text-[16px] leading-none">Upload to all API platforms</span>
+            <span className="mp-mono text-[11px] uppercase tracking-[0.2em] px-1.5 py-0.5" style={{ background: '#3A86FF', color: '#fff' }}>Demo</span>
           </div>
           <p className="mp-body text-xs leading-relaxed" style={{ color: 'rgba(21,23,28,0.7)' }}>
             {apiPlatforms.length > 0
@@ -2286,7 +2288,7 @@ function BatchUploadPanel({ enabled, project }) {
         <button
           onClick={run}
           disabled={!apiPlatforms.length || status === 'running'}
-          className="mp-btn text-[12px] py-2.5 px-4 disabled:opacity-40 flex-shrink-0"
+          className="mp-btn text-[13px] py-2.5 px-4 disabled:opacity-40 flex-shrink-0"
           style={apiPlatforms.length ? { background: '#3A86FF', borderColor: '#3A86FF' } : undefined}
         >
           {status === 'running'
@@ -2305,7 +2307,7 @@ function BatchUploadPanel({ enabled, project }) {
                   ? <Loader size={13} className="mp-spin flex-shrink-0" style={{ color: '#3A86FF' }} />
                   : <div className="w-[13px] h-[13px] rounded-full flex-shrink-0" style={{ border: '1.5px solid rgba(21,23,28,0.2)' }} />}
               <span className="mp-display font-bold flex-shrink-0" style={{ minWidth: 120 }}>{r.name}</span>
-              <span className="mp-mono text-[10px] truncate" style={{ color: 'rgba(21,23,28,0.55)' }}>
+              <span className="mp-mono text-[12px] truncate" style={{ color: 'rgba(21,23,28,0.55)' }}>
                 {r.state === 'done' ? (r.id === 'mmf' ? 'queued for curation' : r.url) : r.state === 'uploading' ? 'uploading…' : 'waiting'}
               </span>
             </div>
@@ -2313,7 +2315,7 @@ function BatchUploadPanel({ enabled, project }) {
         </div>
       )}
 
-      <p className="text-[9px] mt-2.5 leading-snug" style={{ color: 'rgba(21,23,28,0.4)' }}>
+      <p className="text-[11px] mt-2.5 leading-snug" style={{ color: 'rgba(21,23,28,0.4)' }}>
         Simulation only — nothing is uploaded yet. Real API upload is the next build phase.
       </p>
     </div>
@@ -2401,11 +2403,11 @@ function BatchZipButton({ enabled, project, cover }) {
     <button
       onClick={downloadAllPlatforms}
       disabled={busy || !cover || enabled.length === 0}
-      className="mp-btn text-[12px] py-2.5 px-4 whitespace-nowrap disabled:opacity-40"
+      className="mp-btn text-[13px] py-2.5 px-4 whitespace-nowrap disabled:opacity-40"
       title={!cover ? 'Add at least one image first' : `Download ${enabled.length} zip(s), one per platform`}
     >
       {busy ? (
-        <><Loader size={13} className="mp-spin" /> <span className="mp-mono text-[11px] tracking-normal normal-case">{msg || 'Working'}</span></>
+        <><Loader size={13} className="mp-spin" /> <span className="mp-mono text-[13px] tracking-normal normal-case">{msg || 'Working'}</span></>
       ) : (
         <><Download size={13} /> {enabled.length} .zip files</>
       )}
@@ -2557,7 +2559,7 @@ function PlatformPackageCard({ platform, project, cover, platformState }) {
               <span className="mp-pill" style={{ background: 'rgba(58,134,255,0.15)', color: '#3A86FF' }}>addon</span>
             )}
           </div>
-          <div className="mp-mono text-[10px] uppercase tracking-[0.15em] mt-1" style={{ color: 'rgba(21,23,28,0.55)' }}>
+          <div className="mp-mono text-[12px] uppercase tracking-[0.15em] mt-1" style={{ color: 'rgba(21,23,28,0.55)' }}>
             {platform.org} · {platform.descFormat} description · {platform.maxImages} img max
           </div>
         </div>
@@ -2566,7 +2568,7 @@ function PlatformPackageCard({ platform, project, cover, platformState }) {
           {platform.hasApi && (
             <button
               onClick={() => { setExpanded(true); setUploadSignal(n => n + 1); }}
-              className="mp-btn text-[12px] py-2 px-3"
+              className="mp-btn text-[13px] py-2 px-3"
               style={{ background: '#3A86FF', borderColor: '#3A86FF' }}
               title="Preview one-click upload (demo)"
             >
@@ -2576,16 +2578,16 @@ function PlatformPackageCard({ platform, project, cover, platformState }) {
           <button
             onClick={downloadEverything}
             disabled={downloading || !cover}
-            className="mp-btn mp-btn-ghost text-[12px] py-2 px-3 disabled:opacity-40"
+            className="mp-btn mp-btn-ghost text-[13px] py-2 px-3 disabled:opacity-40"
             title={!cover ? 'Add at least one image first' : 'Download a ZIP containing everything for this platform'}
           >
             {downloading ? (
-              <><Loader size={12} className="mp-spin" /> <span className="mp-mono text-[11px] normal-case tracking-normal" style={{ fontFamily: "'JetBrains Mono', monospace" }}>{progressMsg || 'Working'}</span></>
+              <><Loader size={12} className="mp-spin" /> <span className="mp-mono text-[13px] normal-case tracking-normal" style={{ fontFamily: "'JetBrains Mono', monospace" }}>{progressMsg || 'Working'}</span></>
             ) : (
               <><Download size={12} /> {progressMsg ? progressMsg : 'Download .zip'}</>
             )}
           </button>
-          <a href={uploadUrl} target="_blank" rel="noopener noreferrer" className="mp-btn text-[12px] py-2 px-3">
+          <a href={uploadUrl} target="_blank" rel="noopener noreferrer" className="mp-btn text-[13px] py-2 px-3">
             <Send size={12} /> Open upload page
           </a>
           <button onClick={() => setExpanded(s => !s)} className="p-2 opacity-60 hover:opacity-100 transition">
@@ -2632,13 +2634,13 @@ function PlatformPackageCard({ platform, project, cover, platformState }) {
               <>
                 <PackageLabel label="Description (rich text)" hint={`${platform.name} uses a visual editor — paste keeps formatting`}>
                   <RichCopyButton html={mdToHtml(project.description)} plain={mdToPlain(project.description)} />
-                  <button onClick={downloadDescriptionFile} className="mp-mono text-[10px] uppercase tracking-[0.2em] hover:text-[#FF5722] transition flex items-center gap-1">
+                  <button onClick={downloadDescriptionFile} className="mp-mono text-[12px] uppercase tracking-[0.2em] hover:text-[#FF5722] transition flex items-center gap-1">
                     <Download size={10} /> .html
                   </button>
                 </PackageLabel>
-                <div className="mp-card mp-prose p-4 text-[13px] max-h-56 overflow-auto" style={{ background: '#FFFFFF' }}
+                <div className="mp-card mp-prose p-4 text-[14px] max-h-56 overflow-auto" style={{ background: '#FFFFFF' }}
                   dangerouslySetInnerHTML={{ __html: mdToHtml(project.description) || '<span style="color:rgba(21,23,28,0.4)">(no description)</span>' }} />
-                <p className="text-[10px] mt-1.5 leading-snug" style={{ color: 'rgba(21,23,28,0.45)' }}>
+                <p className="text-[12px] mt-1.5 leading-snug" style={{ color: 'rgba(21,23,28,0.45)' }}>
                   Don't paste raw HTML into {platform.name} — it shows the tags. Hit <strong>Copy formatted</strong>, then paste into the description box. (The .html download is a backup: open it in a browser, select all, copy.)
                 </p>
               </>
@@ -2646,11 +2648,11 @@ function PlatformPackageCard({ platform, project, cover, platformState }) {
               <>
                 <PackageLabel label={`Description (${platform.descFormat})`} hint={`${desc.length} chars`}>
                   <CopyButton text={desc} />
-                  <button onClick={downloadDescriptionFile} className="mp-mono text-[10px] uppercase tracking-[0.2em] hover:text-[#FF5722] transition flex items-center gap-1">
+                  <button onClick={downloadDescriptionFile} className="mp-mono text-[12px] uppercase tracking-[0.2em] hover:text-[#FF5722] transition flex items-center gap-1">
                     <Download size={10} /> .{platform.descFormat === 'markdown' ? 'md' : platform.descFormat === 'html' ? 'html' : 'txt'}
                   </button>
                 </PackageLabel>
-                <pre className="mp-pre mp-mono text-[11px] leading-relaxed mp-card p-3 max-h-48 overflow-auto" style={{ background: 'rgba(21,23,28,0.03)', color: 'rgba(21,23,28,0.85)' }}>
+                <pre className="mp-pre mp-mono text-[13px] leading-relaxed mp-card p-3 max-h-48 overflow-auto" style={{ background: 'rgba(21,23,28,0.03)', color: 'rgba(21,23,28,0.85)' }}>
                   {desc || <span style={{ color: 'rgba(21,23,28,0.4)' }}>(no description)</span>}
                 </pre>
               </>
@@ -2661,7 +2663,7 @@ function PlatformPackageCard({ platform, project, cover, platformState }) {
           {cover && (
             <div>
               <PackageLabel label={`Cover image${platform.covers.length > 1 ? 's' : ''}`} hint={platform.covers.map(c => `${c.w}×${c.h}`).join(' · ')}>
-                <button onClick={downloadAllCovers} disabled={downloading} className="mp-mono text-[10px] uppercase tracking-[0.2em] hover:text-[#FF5722] transition flex items-center gap-1">
+                <button onClick={downloadAllCovers} disabled={downloading} className="mp-mono text-[12px] uppercase tracking-[0.2em] hover:text-[#FF5722] transition flex items-center gap-1">
                   <Download size={10} /> {platform.covers.length > 1 ? `Both covers` : 'JPG'}
                 </button>
               </PackageLabel>
@@ -2680,7 +2682,7 @@ function PlatformPackageCard({ platform, project, cover, platformState }) {
                 label="Gallery images"
                 hint={`${Math.min(project.images.length - 1, platform.maxImages - 1)} of ${project.images.length - 1} additional (cap ${platform.maxImages})`}
               >
-                <button onClick={downloadAllGallery} disabled={downloading} className="mp-mono text-[10px] uppercase tracking-[0.2em] hover:text-[#FF5722] transition flex items-center gap-1">
+                <button onClick={downloadAllGallery} disabled={downloading} className="mp-mono text-[12px] uppercase tracking-[0.2em] hover:text-[#FF5722] transition flex items-center gap-1">
                   <Download size={10} /> All gallery
                 </button>
               </PackageLabel>
@@ -2698,7 +2700,7 @@ function PlatformPackageCard({ platform, project, cover, platformState }) {
                   ))}
               </div>
               {project.images.length - 1 > platform.maxImages - 1 && (
-                <div className="mt-2 mp-mono text-[10px]" style={{ color: 'rgba(21,23,28,0.5)' }}>
+                <div className="mt-2 mp-mono text-[12px]" style={{ color: 'rgba(21,23,28,0.5)' }}>
                   /// {project.images.length - 1 - (platform.maxImages - 1)} image(s) skipped, {platform.name} caps at {platform.maxImages}
                 </div>
               )}
@@ -2719,7 +2721,7 @@ function PlatformPackageCard({ platform, project, cover, platformState }) {
                         {f.isProfile ? <Layers size={11} /> : <FileCheck size={11} />}
                       </div>
                       <span className="flex-1 truncate">{f.name}</span>
-                      <span className="mp-mono text-[10px] uppercase tracking-[0.15em]" style={{ color: 'rgba(21,23,28,0.5)' }}>
+                      <span className="mp-mono text-[12px] uppercase tracking-[0.15em]" style={{ color: 'rgba(21,23,28,0.5)' }}>
                         {formatBytes(f.size)}
                       </span>
                       {accepted ? (
@@ -2738,7 +2740,7 @@ function PlatformPackageCard({ platform, project, cover, platformState }) {
           {platform.hasApi && <MockUploadFlow platform={platform} project={project} startSignal={uploadSignal} />}
 
           {/* Workflow hint */}
-          <div className="border-t pt-3 flex items-start gap-2 text-[11px]" style={{ borderColor: 'rgba(21,23,28,0.08)', color: 'rgba(21,23,28,0.6)' }}>
+          <div className="border-t pt-3 flex items-start gap-2 text-[13px]" style={{ borderColor: 'rgba(21,23,28,0.08)', color: 'rgba(21,23,28,0.6)' }}>
             <Info size={12} className="flex-shrink-0 mt-0.5" style={{ color: '#FF5722' }} />
             <div>
               <strong className="mp-display tracking-wide" style={{ color: '#15171C' }}>{platform.hasApi ? 'MANUAL UPLOAD (WORKS TODAY)' : 'WORKFLOW'}</strong>{' '}
@@ -2755,8 +2757,8 @@ function PackageLabel({ label, hint, children }) {
   return (
     <div className="flex items-center justify-between mb-2">
       <div>
-        <span className="mp-mono text-[10px] uppercase tracking-[0.2em]" style={{ color: 'rgba(21,23,28,0.55)' }}>{label}</span>
-        {hint && <span className="mp-mono text-[10px] uppercase tracking-[0.15em] ml-2" style={{ color: 'rgba(21,23,28,0.35)' }}>· {hint}</span>}
+        <span className="mp-mono text-[12px] uppercase tracking-[0.2em]" style={{ color: 'rgba(21,23,28,0.55)' }}>{label}</span>
+        {hint && <span className="mp-mono text-[12px] uppercase tracking-[0.15em] ml-2" style={{ color: 'rgba(21,23,28,0.35)' }}>· {hint}</span>}
       </div>
       <div className="flex items-center gap-3">{children}</div>
     </div>
@@ -2769,12 +2771,12 @@ function PackageField({ label, value }) {
   return (
     <div className="mp-card p-2.5">
       <div className="flex items-center justify-between mb-1">
-        <span className="mp-mono text-[9px] uppercase tracking-[0.2em]" style={{ color: 'rgba(21,23,28,0.5)' }}>{label}</span>
+        <span className="mp-mono text-[11px] uppercase tracking-[0.2em]" style={{ color: 'rgba(21,23,28,0.5)' }}>{label}</span>
         <button onClick={copy} className="opacity-60 hover:opacity-100 transition" aria-label={`Copy ${label}`}>
           {copied ? <Check size={11} style={{ color: '#4FB286' }} /> : <Copy size={11} />}
         </button>
       </div>
-      <div className="mp-display text-[14px] leading-tight truncate">{value || <span style={{ color: 'rgba(21,23,28,0.4)' }} className="mp-body">—</span>}</div>
+      <div className="mp-display text-[15px] leading-tight truncate">{value || <span style={{ color: 'rgba(21,23,28,0.4)' }} className="mp-body">—</span>}</div>
     </div>
   );
 }
@@ -2783,7 +2785,7 @@ function CopyButton({ text }) {
   const [copied, setCopied] = useState(false);
   const copy = () => { navigator.clipboard.writeText(text || ''); setCopied(true); setTimeout(() => setCopied(false), 1200); };
   return (
-    <button onClick={copy} disabled={!text} className="mp-mono text-[10px] uppercase tracking-[0.2em] hover:text-[#FF5722] transition flex items-center gap-1 disabled:opacity-30">
+    <button onClick={copy} disabled={!text} className="mp-mono text-[12px] uppercase tracking-[0.2em] hover:text-[#FF5722] transition flex items-center gap-1 disabled:opacity-30">
       {copied ? <><Check size={11} style={{ color: '#4FB286' }} /> Copied</> : <><Copy size={10} /> Copy</>}
     </button>
   );
@@ -2798,7 +2800,7 @@ function RichCopyButton({ html, plain, label = 'Copy formatted' }) {
     if (ok) { setCopied(true); setTimeout(() => setCopied(false), 1200); }
   };
   return (
-    <button onClick={copy} disabled={!plain} className="mp-mono text-[10px] uppercase tracking-[0.2em] hover:text-[#FF5722] transition flex items-center gap-1 disabled:opacity-30">
+    <button onClick={copy} disabled={!plain} className="mp-mono text-[12px] uppercase tracking-[0.2em] hover:text-[#FF5722] transition flex items-center gap-1 disabled:opacity-30">
       {copied ? <><Check size={11} style={{ color: '#4FB286' }} /> Copied</> : <><Copy size={10} /> {label}</>}
     </button>
   );
@@ -2862,14 +2864,14 @@ function MockUploadFlow({ platform, project, startSignal = 0 }) {
     <div className="border-t pt-3" style={{ borderColor: 'rgba(21,23,28,0.08)' }}>
       <div className="mp-card p-3" style={{ background: 'rgba(58,134,255,0.05)', border: '1px solid rgba(58,134,255,0.35)' }}>
         <div className="flex items-center gap-2 mb-2">
-          <span className="mp-display tracking-wide text-[13px]" style={{ color: '#15171C' }}>ONE-CLICK UPLOAD</span>
-          <span className="mp-mono text-[8px] uppercase tracking-[0.2em] px-1.5 py-0.5" style={{ background: '#3A86FF', color: '#fff' }}>Demo</span>
-          <span className="mp-mono text-[9px] uppercase tracking-[0.15em]" style={{ color: 'rgba(21,23,28,0.45)' }}>{platform.name} has an upload API</span>
+          <span className="mp-display tracking-wide text-[14px]" style={{ color: '#15171C' }}>ONE-CLICK UPLOAD</span>
+          <span className="mp-mono text-[11px] uppercase tracking-[0.2em] px-1.5 py-0.5" style={{ background: '#3A86FF', color: '#fff' }}>Demo</span>
+          <span className="mp-mono text-[11px] uppercase tracking-[0.15em]" style={{ color: 'rgba(21,23,28,0.45)' }}>{platform.name} has an upload API</span>
         </div>
 
         {status === 'idle' && (
           <>
-            <p className="text-[11px] mb-2.5 leading-snug" style={{ color: 'rgba(21,23,28,0.65)' }}>
+            <p className="text-[13px] mb-2.5 leading-snug" style={{ color: 'rgba(21,23,28,0.65)' }}>
               {platform.name} supports publishing via API. Connect your account once, then publish straight from here — no manual upload page.
             </p>
             <button onClick={connect} className="mp-btn text-xs py-2 px-3"><Globe size={13} /> Connect {platform.name}</button>
@@ -2902,17 +2904,17 @@ function MockUploadFlow({ platform, project, startSignal = 0 }) {
             <div className="flex items-center gap-2 text-xs mb-1.5" style={{ color: '#3a8d68' }}>
               <Check size={14} /> {platform.id === 'mmf' ? 'Submitted — queued for curation' : 'Published (simulated)'}
             </div>
-            <div className="mp-card mp-mono text-[11px] p-2 mb-2 break-all" style={{ background: 'rgba(21,23,28,0.04)', color: 'rgba(21,23,28,0.7)' }}>{resultUrl}</div>
+            <div className="mp-card mp-mono text-[13px] p-2 mb-2 break-all" style={{ background: 'rgba(21,23,28,0.04)', color: 'rgba(21,23,28,0.7)' }}>{resultUrl}</div>
             {platform.id === 'mmf' && (
-              <p className="text-[10px] mb-2 leading-snug" style={{ color: 'rgba(21,23,28,0.55)' }}>MyMiniFactory test-prints before publishing, so it won't be live immediately.</p>
+              <p className="text-[12px] mb-2 leading-snug" style={{ color: 'rgba(21,23,28,0.55)' }}>MyMiniFactory test-prints before publishing, so it won't be live immediately.</p>
             )}
-            <button onClick={() => { setStatus('connected'); setStepMsg(''); }} className="mp-mono text-[10px] uppercase tracking-[0.2em] hover:text-[#FF5722] transition flex items-center gap-1">
+            <button onClick={() => { setStatus('connected'); setStepMsg(''); }} className="mp-mono text-[12px] uppercase tracking-[0.2em] hover:text-[#FF5722] transition flex items-center gap-1">
               <ArrowRight size={11} /> Publish again
             </button>
           </>
         )}
 
-        <p className="text-[9px] mt-2.5 leading-snug" style={{ color: 'rgba(21,23,28,0.4)' }}>
+        <p className="text-[11px] mt-2.5 leading-snug" style={{ color: 'rgba(21,23,28,0.4)' }}>
           Simulation only — nothing is uploaded yet. Real API upload to Cults3D, MyMiniFactory & Thingiverse is the next build phase. For now, use the manual steps below.
         </p>
       </div>
@@ -2944,12 +2946,12 @@ function CoverPreview({ image, cover, onDownload }) {
       <div className="overflow-hidden" style={{ background: '#15171C' }}>
         <canvas ref={canvasRef} className="w-full block" />
       </div>
-      <div className="absolute top-2 left-2 mp-mono text-[9px] uppercase tracking-[0.15em] px-1.5 py-0.5" style={{ background: 'rgba(0,0,0,0.7)', color: '#fff' }}>
+      <div className="absolute top-2 left-2 mp-mono text-[11px] uppercase tracking-[0.15em] px-1.5 py-0.5" style={{ background: 'rgba(0,0,0,0.7)', color: '#fff' }}>
         {cover.label} · {cover.w}×{cover.h}
       </div>
       <button
         onClick={onDownload}
-        className="absolute bottom-2 right-2 mp-mono text-[10px] uppercase tracking-[0.2em] py-1.5 px-2 flex items-center gap-1.5 transition"
+        className="absolute bottom-2 right-2 mp-mono text-[12px] uppercase tracking-[0.2em] py-1.5 px-2 flex items-center gap-1.5 transition"
         style={{ background: '#15171C', color: '#fff' }}
         onMouseEnter={(e) => e.currentTarget.style.background = '#FF5722'}
         onMouseLeave={(e) => e.currentTarget.style.background = '#15171C'}
@@ -2974,7 +2976,7 @@ function GalleryThumb({ image, mainCover, onDownload }) {
         className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition"
         style={{ background: 'rgba(21,23,28,0.7)' }}
       >
-        <div className="mp-mono text-[10px] uppercase tracking-[0.2em] flex items-center gap-1" style={{ color: '#fff' }}>
+        <div className="mp-mono text-[12px] uppercase tracking-[0.2em] flex items-center gap-1" style={{ color: '#fff' }}>
           <Download size={11} /> JPG
         </div>
       </button>
@@ -2991,16 +2993,16 @@ function SectionHeader({ number, title, subtitle }) {
   return (
     <div className="border-b pb-6" style={{ borderColor: 'rgba(21,23,28,0.15)' }}>
       <div className="flex items-center gap-3 mb-3">
-        <span className="mp-mono text-[10px] tracking-[0.3em]" style={{ color: '#FF5722' }}>
+        <span className="mp-mono text-[12px] tracking-[0.3em]" style={{ color: '#FF5722' }}>
           <span className="mp-dimline">STEP {number}</span>
         </span>
         <div className="flex-1 mp-tickrule" />
-        <span className="mp-mono text-[9px] uppercase tracking-[0.2em]" style={{ color: 'rgba(21,23,28,0.4)' }}>
+        <span className="mp-mono text-[11px] uppercase tracking-[0.2em]" style={{ color: 'rgba(21,23,28,0.4)' }}>
           /// modelprep
         </span>
       </div>
       <h2 className="mp-display text-[44px] leading-[0.92] mb-3" style={{ color: '#15171C' }}>{title}</h2>
-      <p className="mp-body text-[14px] max-w-2xl leading-relaxed" style={{ color: 'rgba(21,23,28,0.65)' }}>{subtitle}</p>
+      <p className="mp-body text-[15px] max-w-2xl leading-relaxed" style={{ color: 'rgba(21,23,28,0.65)' }}>{subtitle}</p>
     </div>
   );
 }
