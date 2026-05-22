@@ -903,7 +903,7 @@ function FilesSection({ project, updateProject, setCurrentSection }) {
   const totalSize = project.files.reduce((s, f) => s + f.size, 0);
 
   return (
-    <div className="max-w-4xl">
+    <div className="max-w-5xl">
       <SectionHeader
         number="01"
         title="Drop your files"
@@ -1211,7 +1211,7 @@ function DetailsSection({ project, updateProject, setCurrentSection }) {
   };
 
   return (
-    <div className="max-w-4xl">
+    <div className="max-w-5xl">
       <SectionHeader
         number="02"
         title="Project details"
@@ -1520,7 +1520,7 @@ function ImagesSection({ project, updateProject, setCurrentSection }) {
   const activeImage = project.images.find(i => i.id === activeImageId) || project.images[0];
 
   return (
-    <div className="max-w-6xl">
+    <div className="max-w-5xl">
       <SectionHeader
         number="03"
         title="Cover and gallery images"
@@ -1811,7 +1811,7 @@ function ProfilesSection({ project, updateProject, setCurrentSection }) {
 
   if (project.profiles.length === 0) {
     return (
-      <div className="max-w-4xl">
+      <div className="max-w-5xl">
         <SectionHeader number="04" title="Print profiles" subtitle="Each 3MF file becomes a print profile here. You haven't added any 3MF files yet, so this step is skipped." />
         <div className="mt-6 p-8 text-center mp-card">
           <Layers size={32} className="mx-auto mb-3 opacity-30" />
@@ -1834,7 +1834,7 @@ function ProfilesSection({ project, updateProject, setCurrentSection }) {
   const active = project.profiles.find(p => p.id === activeProfileId) || project.profiles[0];
 
   return (
-    <div className="max-w-6xl">
+    <div className="max-w-5xl">
       <SectionHeader
         number="04"
         title="Print profiles"
@@ -2175,7 +2175,7 @@ function PublishSection({ project, allReady, completion, setCurrentSection }) {
 
   if (!allReady) {
     return (
-      <div className="max-w-4xl">
+      <div className="max-w-5xl">
         <SectionHeader number="06" title="Prepare upload packages" subtitle="Finish the missing steps below to generate platform-ready exports." />
         <div className="mt-6 space-y-2">
           {SECTIONS.slice(0, -1).map(s => (
@@ -2199,7 +2199,7 @@ function PublishSection({ project, allReady, completion, setCurrentSection }) {
   }
 
   return (
-    <div className="max-w-6xl">
+    <div className="max-w-5xl">
       <SectionHeader
         number="06"
         title="Prepare upload packages"
