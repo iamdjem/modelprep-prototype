@@ -499,6 +499,69 @@ const initialProject = {
   },
 };
 
+// --- Demo data ---------------------------------------------------------------
+// A fully-populated project so users can click through what a finished, filled-in
+// project looks like (files, cropped images, profiles, every field, platforms),
+// then toggle off to return to their own work.
+function buildDemoProject() {
+  const tints = [
+    ['#FF5722', '#FFB627', '#1A1A1A'],
+    ['#3A86FF', '#4FB286', '#1A1A1A'],
+    ['#FF6900', '#F79E2E', '#1A1A1A'],
+    ['#9B5DE5', '#F15BB5', '#1A1A1A'],
+  ];
+  const labels = ['HERO RENDER', 'PRINTED', 'DETAIL', 'IN SCALE'];
+  const images = tints.map((tint, i) => ({
+    id: 'demoimg_' + i,
+    dataUrl: makeSampleImage(labels[i], tint),
+    naturalW: 2400, naturalH: 1800,
+    focal: { x: 0.5, y: i % 2 ? 0.42 : 0.5 },
+    alt: labels[i],
+  }));
+  const mkFile = (name, size, type) => ({
+    id: 'demofile_' + name,
+    name, size, type,
+    isModel: isModelFile(name), isProfile: isProfile(name), isImage: isImageFile(name),
+    blob: new Blob([`ModelPrep demo placeholder — ${name}`], { type: type || 'application/octet-stream' }),
+  });
+  const files = [
+    mkFile('desk-dragon-S.stl', 4_180_000, 'model/stl'),
+    mkFile('desk-dragon-M.stl', 7_640_000, 'model/stl'),
+    mkFile('desk-dragon-bambu.3mf', 9_220_000, 'model/3mf'),
+  ];
+  const profiles = files.filter(f => isProfile(f.name)).map(f => ({
+    id: 'prof_' + f.id,
+    fileId: f.id,
+    name: f.name.replace(/\.3mf$/i, ''),
+    description: 'Calibrated for Bambu A1 Mini, 0.4mm nozzle. Matte PLA, 0.2mm layers, 15% gyroid infill, no supports.',
+    useMainCover: false,
+    coverImageId: images[1].id,
+    parsed: mockParseThreeMF('desk-dragon-bambu.3mf'),
+  }));
+  return {
+    name: 'Articulating Desk Dragon (demo)',
+    files,
+    images,
+    coverImageId: images[0].id,
+    title: 'Articulating Desk Dragon — Print-in-Place',
+    description: SAMPLE_DESCRIPTION,
+    category: 'Toys & Games',
+    tags: ['articulated', 'flexi', 'dragon', 'print-in-place', 'no-supports', 'desk-toy', 'fidget', 'fantasy'],
+    license: 'ccbync',
+    profiles,
+    platforms: {
+      makerworld: { enabled: true, remix: false },
+      printables: { enabled: true },
+      cults: { enabled: true, price: 4.5, free: false },
+      mmf: { enabled: true, price: 0, free: true },
+      thingiverse: { enabled: true },
+      thangs: { enabled: false },
+      nexprint: { enabled: true, contestEntry: 'creator-fund' },
+      creality: { enabled: false },
+    },
+  };
+}
+
 // --- Autosave (localStorage) -------------------------------------------------
 // We persist only serializable METADATA — not files (File blobs) or image pixels
 // (base64 dataUrls would blow the ~5MB quota). Restoring brings back the typed
@@ -536,6 +599,24 @@ export default function App() {
   const [templates, setTemplates] = useState([]);
   const [showTemplates, setShowTemplates] = useState(false);
   const [dialog, setDialog] = useState(null); // styled prompt/confirm modal
+  const [demoActive, setDemoActive] = useState(false);
+  const stashedProject = useRef(null);
+
+  // Demo mode: fill the whole project with sample data so users can click through
+  // a finished UI, then toggle off to restore their own work. We stash the real
+  // project on enter and never autosave while demo is on (see autosave effect).
+  const toggleDemo = () => {
+    if (!demoActive) {
+      stashedProject.current = project;
+      setProject(buildDemoProject());
+      setDemoActive(true);
+      setCurrentSection('files');
+    } else {
+      setProject(stashedProject.current || { ...initialProject, name: 'Untitled Project' });
+      stashedProject.current = null;
+      setDemoActive(false);
+    }
+  };
 
   // Thin dispatchers — keep the existing call-site shapes working:
   //   updateProject({ ...patch })         shallow-merge
@@ -574,13 +655,13 @@ export default function App() {
   // project has real content, so a fresh load never clobbers a saved session.
   const saveTimer = useRef(null);
   useEffect(() => {
-    if (!projectHasContent(project)) return;
+    if (demoActive || !projectHasContent(project)) return; // never persist demo data
     clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => {
       try { localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(serializeProjectMeta(project))); } catch (e) { /* quota/private mode */ }
     }, 600);
     return () => clearTimeout(saveTimer.current);
-  }, [project]);
+  }, [project, demoActive]);
 
   // On first load, offer to restore a previous session if one was saved.
   useEffect(() => {
@@ -656,6 +737,8 @@ export default function App() {
   const newProject = () => {
     const reset = () => {
       try { localStorage.removeItem(AUTOSAVE_KEY); } catch (e) { /* ignore */ }
+      setDemoActive(false);
+      stashedProject.current = null;
       setProject({ ...initialProject, name: 'Untitled Project' });
       setCurrentSection('files');
     };
@@ -693,6 +776,8 @@ export default function App() {
         onSaveTemplate={saveAsTemplate}
         onLoadTemplate={loadTemplate}
         onNewProject={newProject}
+        demoActive={demoActive}
+        onToggleDemo={toggleDemo}
       />
 
       <div className="flex flex-col lg:flex-row max-w-[1400px] mx-auto" style={{ minHeight: 'calc(100vh - 81px - 32px)' }}>
@@ -915,7 +1000,7 @@ function GlobalStyles() {
 // TOP HEADER
 // =====================================================================
 
-function TopHeader({ project, updateProject, templates, showTemplates, setShowTemplates, onSaveTemplate, onLoadTemplate, onNewProject }) {
+function TopHeader({ project, updateProject, templates, showTemplates, setShowTemplates, onSaveTemplate, onLoadTemplate, onNewProject, demoActive, onToggleDemo }) {
   const [editingName, setEditingName] = useState(false);
   const templatesRef = useRef(null);
 
@@ -1003,11 +1088,25 @@ function TopHeader({ project, updateProject, templates, showTemplates, setShowTe
               </div>
             )}
           </div>
+          <button
+            onClick={onToggleDemo}
+            className="mp-btn text-xs py-2 px-3"
+            style={demoActive ? { background: '#3A86FF', borderColor: '#3A86FF' } : { background: 'transparent', color: '#15171C', border: '1px solid rgba(21,23,28,0.25)' }}
+            aria-pressed={demoActive}
+            title={demoActive ? 'Exit demo and restore your data' : 'Fill the app with sample data to explore'}
+          >
+            <Sparkles size={13} /> {demoActive ? 'Exit demo' : 'Demo'}
+          </button>
           <button onClick={onNewProject} className="mp-btn mp-btn-ghost text-xs py-2 px-3">
             <Plus size={13} /> New
           </button>
         </div>
       </div>
+      {demoActive && (
+        <div className="text-center py-1.5 px-4 mp-mono text-[12px] uppercase tracking-[0.15em] flex items-center justify-center gap-2" style={{ background: '#3A86FF', color: '#fff' }}>
+          <Sparkles size={12} /> Demo data loaded — explore the filled-in flow. Your own work is safe; click “Exit demo” to restore it.
+        </div>
+      )}
     </header>
   );
 }
