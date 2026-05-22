@@ -332,18 +332,15 @@ function loadImageFromDataUrl(url) {
   });
 }
 
-// Lazy-load JSZip from CDN on first use. Cached after first load.
+// Lazy-load JSZip from the bundle (code-split into its own chunk) on first use.
+// Bundled rather than CDN-loaded so the core download feature never depends on
+// a third-party CDN being reachable. Cached after first load.
 let _jszipPromise = null;
 function loadJSZip() {
   if (_jszipPromise) return _jszipPromise;
-  _jszipPromise = new Promise((resolve, reject) => {
-    if (typeof window !== 'undefined' && window.JSZip) return resolve(window.JSZip);
-    const script = document.createElement('script');
-    script.src = 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
-    script.onload = () => resolve(window.JSZip);
-    script.onerror = () => { _jszipPromise = null; reject(new Error('Could not load JSZip from CDN. Check internet connection.')); };
-    document.head.appendChild(script);
-  });
+  _jszipPromise = import('jszip')
+    .then(m => m.default || m)
+    .catch(err => { _jszipPromise = null; throw new Error('Could not load the ZIP library. Reload the page and try again.'); });
   return _jszipPromise;
 }
 
@@ -480,6 +477,25 @@ const initialProject = {
   },
 };
 
+// --- Autosave (localStorage) -------------------------------------------------
+// We persist only serializable METADATA — not files (File blobs) or image pixels
+// (base64 dataUrls would blow the ~5MB quota). Restoring brings back the typed
+// description, tags, category, license and per-platform settings; files/images
+// are re-added by the user.
+const AUTOSAVE_KEY = 'modelprep:autosave:v1';
+function serializeProjectMeta(p) {
+  return {
+    name: p.name, title: p.title, description: p.description,
+    tags: p.tags, category: p.category, license: p.license,
+    platforms: p.platforms,
+    savedAt: Date.now(),
+  };
+}
+function projectHasContent(p) {
+  return !!(p.title || p.description || p.tags.length ||
+    Object.values(p.platforms).some(pl => pl.price || pl.contestEntry || pl.remix));
+}
+
 export default function App() {
   const [project, setProject] = useState(initialProject);
   const [currentSection, setCurrentSection] = useState('files');
@@ -515,6 +531,41 @@ export default function App() {
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [project.files]);
+
+  // Autosave project metadata to localStorage (debounced). Only writes once the
+  // project has real content, so a fresh load never clobbers a saved session.
+  const saveTimer = useRef(null);
+  useEffect(() => {
+    if (!projectHasContent(project)) return;
+    clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => {
+      try { localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(serializeProjectMeta(project))); } catch (e) { /* quota/private mode */ }
+    }, 600);
+    return () => clearTimeout(saveTimer.current);
+  }, [project]);
+
+  // On first load, offer to restore a previous session if one was saved.
+  useEffect(() => {
+    let saved;
+    try { saved = JSON.parse(localStorage.getItem(AUTOSAVE_KEY) || 'null'); } catch (e) { saved = null; }
+    if (!saved || (!saved.title && !saved.description && !(saved.tags || []).length)) return;
+    setDialog({
+      kind: 'confirm',
+      title: 'Restore previous session?',
+      message: `Found unsaved work${saved.title ? ` for “${saved.title}”` : ''} — description, tags, category, license and platform settings. (Files and images need re-adding.)`,
+      confirmLabel: 'Restore',
+      onConfirm: () => updateProject({
+        name: saved.name || 'Untitled Project',
+        title: saved.title || '',
+        description: saved.description || '',
+        tags: saved.tags || [],
+        category: saved.category || '',
+        license: saved.license || 'ccbync',
+        platforms: saved.platforms || initialProject.platforms,
+      }),
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Section completion logic
   const completion = useMemo(() => ({
@@ -565,7 +616,11 @@ export default function App() {
   };
   const isDirty = () => project.files.length || project.images.length || project.title || project.description || project.tags.length || Object.values(project.platforms).some(p => p.enabled);
   const newProject = () => {
-    const reset = () => { setProject({ ...initialProject, name: 'Untitled Project' }); setCurrentSection('files'); };
+    const reset = () => {
+      try { localStorage.removeItem(AUTOSAVE_KEY); } catch (e) { /* ignore */ }
+      setProject({ ...initialProject, name: 'Untitled Project' });
+      setCurrentSection('files');
+    };
     if (isDirty()) {
       setDialog({
         kind: 'confirm',
