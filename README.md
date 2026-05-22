@@ -1,5 +1,18 @@
 # ModelPrep prototype, deploy guide
 
+## Live demo
+
+[https://iamdjem.github.io/modelprep-prototype/](https://iamdjem.github.io/modelprep-prototype/)
+
+Every push to `main` auto-deploys via GitHub Actions. To work locally:
+
+```bash
+git clone https://github.com/iamdjem/modelprep-prototype.git
+cd modelprep-prototype
+npm install
+npm run dev
+```
+
 This is a ready-to-deploy Vite + React project. Pick one of three paths below depending on how fast you want a public URL.
 
 ## What you'll need
