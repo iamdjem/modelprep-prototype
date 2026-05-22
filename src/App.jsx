@@ -867,6 +867,10 @@ function FilesSection({ project, updateProject, setCurrentSection }) {
 
   const removeFile = (id) => updateProject({ files: project.files.filter(f => f.id !== id) });
 
+  const renameFile = (id, newName) => updateProject({
+    files: project.files.map(f => f.id === id ? { ...f, name: newName } : f),
+  });
+
   const totalSize = project.files.reduce((s, f) => s + f.size, 0);
 
   return (
@@ -942,7 +946,7 @@ function FilesSection({ project, updateProject, setCurrentSection }) {
           </div>
           <div className="space-y-2">
             {project.files.map(f => (
-              <FileRow key={f.id} file={f} onRemove={() => removeFile(f.id)} />
+              <FileRow key={f.id} file={f} onRemove={() => removeFile(f.id)} onRename={(name) => renameFile(f.id, name)} />
             ))}
           </div>
         </div>
@@ -960,19 +964,49 @@ function FilesSection({ project, updateProject, setCurrentSection }) {
   );
 }
 
-function FileRow({ file, onRemove }) {
+function FileRow({ file, onRemove, onRename }) {
   const isProf = file.isProfile;
   const isImg = file.isImage;
+  const ext = fileExt(file.name);
+  const baseName = file.name.replace(/\.[^.]+$/, '');
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(baseName);
+
+  const startEdit = () => { setDraft(baseName); setEditing(true); };
+  const commit = () => {
+    const clean = draft.trim().replace(/[\\/:*?"<>|]/g, '').replace(/\.+$/, '');
+    if (clean && clean !== baseName) onRename(`${clean}.${ext}`);
+    setEditing(false);
+  };
+
   return (
     <div className="mp-card p-3 flex items-center gap-3">
       <div className="w-10 h-10 flex items-center justify-center flex-shrink-0" style={{ background: isProf ? '#FF5722' : isImg ? 'rgba(21,23,28,0.4)' : '#15171C' }}>
         {isProf ? <Layers size={16} color="#fff" /> : isImg ? <ImageIcon size={16} color="#EDE9DE" /> : <FileCheck size={16} color="#EDE9DE" />}
       </div>
       <div className="flex-1 min-w-0">
-        <div className="mp-display font-bold text-sm truncate">{file.name}</div>
+        {editing ? (
+          <div className="flex items-center gap-1">
+            <input
+              autoFocus
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              onBlur={commit}
+              onKeyDown={(e) => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') setEditing(false); }}
+              className="mp-mono text-sm bg-transparent outline-none border-b flex-1 min-w-0"
+              style={{ borderColor: '#FF5722' }}
+            />
+            <span className="mp-mono text-sm flex-shrink-0" style={{ color: 'rgba(21,23,28,0.45)' }}>.{ext}</span>
+          </div>
+        ) : (
+          <button onClick={startEdit} className="mp-display font-bold text-sm truncate flex items-center gap-1.5 group/name max-w-full" title="Click to rename">
+            <span className="truncate">{file.name}</span>
+            <Edit3 size={11} className="opacity-0 group-hover/name:opacity-50 transition flex-shrink-0" />
+          </button>
+        )}
         <div className="flex items-center gap-2 mt-0.5">
           <span className="mp-mono text-[10px] uppercase tracking-[0.15em]" style={{ color: 'rgba(21,23,28,0.5)' }}>
-            .{fileExt(file.name)} · {formatBytes(file.size)}
+            .{ext} · {formatBytes(file.size)}
           </span>
           {isProf && (
             <span className="mp-mono text-[9px] uppercase tracking-[0.2em] px-1.5 py-0.5" style={{ background: '#FF5722', color: '#fff' }}>
@@ -986,6 +1020,9 @@ function FileRow({ file, onRemove }) {
           )}
         </div>
       </div>
+      <button onClick={startEdit} className="p-1.5 opacity-40 hover:opacity-100 transition" aria-label="Rename file">
+        <Edit3 size={14} />
+      </button>
       <button onClick={onRemove} className="p-1.5 opacity-40 hover:opacity-100 transition" aria-label="Remove file">
         <Trash2 size={14} />
       </button>
@@ -1442,7 +1479,7 @@ function ImagesSection({ project, updateProject, setCurrentSection }) {
       <SectionHeader
         number="03"
         title="Cover and gallery images"
-        subtitle="Drop images, set the focal point so every platform's crop keeps what matters in frame. Up to 16 for MakerWorld; most platforms cap at 10-25."
+        subtitle={<>Drop images, set the focal point so every platform's crop keeps what matters in frame.<br />Up to 16 for MakerWorld; most platforms cap at 10-25.</>}
       />
 
       {project.images.length === 0 ? (
