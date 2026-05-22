@@ -1,5 +1,9 @@
 import React, { useState, useRef, useEffect, useMemo, useReducer } from 'react';
 import {
+  mdToHtml, mdToPlain, formatBytes,
+  fileExt, isModelFile, isProfile, isImageFile, slugify, uniqueFileName,
+} from './lib/format';
+import {
   Upload, Download, Copy, Image as ImageIcon, FileText, Check, Sparkles,
   Folder, Send, Star, X, Plus, Trash2, ChevronRight, ChevronDown, ChevronUp,
   AlertCircle, Layers, FileCheck, Loader, Save, Bookmark, Search,
@@ -208,49 +212,6 @@ If the joints are too tight after printing, give them a gentle wiggle. The clear
 // HELPERS
 // =====================================================================
 
-function escapeHtml(s) {
-  return s.replace(/[<>&"']/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&#39;' }[c]));
-}
-function inlineFormat(t) {
-  return t.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-          .replace(/\*(.+?)\*/g, '<em>$1</em>')
-          .replace(/\[(.+?)\]\((.+?)\)/g, '<a href="$2">$1</a>')
-          .replace(/`(.+?)`/g, '<code>$1</code>');
-}
-function mdToHtml(md) {
-  if (!md) return '';
-  const lines = md.split('\n'); const out = []; let inList = false, inCode = false;
-  let codeBuf = [], paraBuf = [];
-  const flushPara = () => { if (paraBuf.length) { const t = paraBuf.join(' ').trim(); if (t) out.push(`<p>${inlineFormat(t)}</p>`); paraBuf = []; } };
-  const closeList = () => { if (inList) { out.push('</ul>'); inList = false; } };
-  for (const line of lines) {
-    if (line.startsWith('```')) {
-      if (inCode) { out.push(`<pre><code>${codeBuf.join('\n')}</code></pre>`); codeBuf = []; inCode = false; }
-      else { flushPara(); closeList(); inCode = true; }
-      continue;
-    }
-    if (inCode) { codeBuf.push(escapeHtml(line)); continue; }
-    const h = line.match(/^(#{1,3})\s+(.+)$/);
-    if (h) { flushPara(); closeList(); out.push(`<h${h[1].length}>${inlineFormat(h[2])}</h${h[1].length}>`); continue; }
-    const li = line.match(/^[-*]\s+(.+)$/);
-    if (li) { flushPara(); if (!inList) { out.push('<ul>'); inList = true; } out.push(`<li>${inlineFormat(li[1])}</li>`); continue; }
-    if (line.trim() === '') { flushPara(); closeList(); continue; }
-    closeList(); paraBuf.push(line);
-  }
-  flushPara(); closeList();
-  return out.join('\n');
-}
-function mdToPlain(md) {
-  if (!md) return '';
-  return md
-    .replace(/```[\s\S]*?```/g, m => m.replace(/```/g, ''))
-    .replace(/^#{1,6}\s+/gm, '')
-    .replace(/\*\*(.+?)\*\*/g, '$1')
-    .replace(/\*(.+?)\*/g, '$1')
-    .replace(/\[(.+?)\]\((.+?)\)/g, '$1 ($2)')
-    .replace(/`(.+?)`/g, '$1')
-    .replace(/^[-*]\s+/gm, '• ');
-}
 function cropToCanvas(img, targetW, targetH, focal) {
   const c = document.createElement('canvas');
   c.width = targetW; c.height = targetH;
@@ -272,19 +233,6 @@ function downloadCanvas(c, filename) {
     URL.revokeObjectURL(u);
   }, 'image/jpeg', 0.92);
 }
-function formatBytes(b) {
-  if (b < 1024) return b + ' B';
-  if (b < 1024 * 1024) return (b / 1024).toFixed(1) + ' KB';
-  if (b < 1024 * 1024 * 1024) return (b / 1024 / 1024).toFixed(1) + ' MB';
-  return (b / 1024 / 1024 / 1024).toFixed(2) + ' GB';
-}
-function fileExt(name) { return (name.split('.').pop() || '').toLowerCase(); }
-function isModelFile(name) {
-  const x = fileExt(name);
-  return ['stl', '3mf', 'obj', 'step', 'stp', 'amf', 'gcode', 'scad', 'dxf', 'svg', 'glb', 'fbx', 'blend'].includes(x);
-}
-function isProfile(name) { return fileExt(name) === '3mf'; }
-
 // Mock 3MF parser: real parsing needs JSZip; for prototype we generate believable profiles
 function mockParseThreeMF(filename) {
   const printers = ['Bambu A1 Mini', 'Bambu P1S', 'Bambu X1C', 'Prusa MK4', 'Elegoo Centauri Carbon'];
@@ -348,9 +296,6 @@ function canvasToBlob(canvas, quality = 0.92) {
   return new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', quality));
 }
 
-function slugify(s) {
-  return (s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'untitled';
-}
 
 function generateMetadataText(platform, project, platformState, tagString) {
   const license = (typeof LICENSES !== 'undefined'
@@ -1136,20 +1081,6 @@ function Sidebar({ currentSection, setCurrentSection, completion }) {
 // Largest "total package" allowance across platforms — anything over this is
 // rejected everywhere, so we block the upload outright rather than just warn.
 const MAX_BUILD_FILE_MB = 500;
-
-function isImageFile(name) { return ['png', 'jpg', 'jpeg', 'webp', 'gif'].includes(fileExt(name)); }
-
-// Make `name` unique against a Set of taken (lowercased) names by suffixing
-// "-2", "-3", … before the extension. Prevents silent collisions in the zip.
-function uniqueFileName(name, taken) {
-  if (!taken.has(name.toLowerCase())) return name;
-  const ext = name.includes('.') ? name.slice(name.lastIndexOf('.')) : '';
-  const base = ext ? name.slice(0, -ext.length) : name;
-  let n = 2;
-  let candidate;
-  do { candidate = `${base}-${n}${ext}`; n++; } while (taken.has(candidate.toLowerCase()));
-  return candidate;
-}
 
 function FilesSection({ project, updateProject, setCurrentSection }) {
   const fileInputRef = useRef(null);
