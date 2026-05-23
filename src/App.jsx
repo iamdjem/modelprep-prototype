@@ -119,9 +119,12 @@ const PLATFORMS = [
   {
     id: 'cults', name: 'Cults3D', org: 'Independent', dot: '#F79E2E',
     covers: [{ id: 'cover', label: 'Cover', w: 1500, h: 1500, aspect: '1:1' }],
-    descFormat: 'markdown', maxImages: 20, maxFileMb: 100, maxTotalMb: 500,
-    formats: ['stl', 'obj', '3mf', 'step', 'zip', 'svg', 'dxf'], hasApi: true, apiSupport: 'oneclick',
-    fields: ['price'], note: 'GraphQL API supports full upload. Paid marketplace.',
+    // Verified from Cults's web upload form (May 2026): 40 accepted file types,
+    // 1 GB per file, images max 10 MB / 8000×8000 px, jpg/png/webp + webm/mp4 video.
+    descFormat: 'markdown', maxImages: 20, maxFileMb: 1000, maxTotalMb: 2000,
+    formats: ['3ds', '3mf', 'ai', 'amf', 'bin', 'blend', 'bmp', 'curaprofile', 'dae', 'doc', 'dst', 'dwg', 'dxf', 'eps', 'f3d', 'f3z', 'fcstd', 'fff', 'gbr', 'gbx', 'gcode', 'ini', 'mtl', 'obj', 'pdf', 'ply', 'ppt', 'psd', 'rcp', 'scad', 'skp', 'sldasm', 'sldprt', 'step', 'stl', 'stp', 'svg', 'txt', 'x3d', 'zip'],
+    hasApi: true, apiSupport: 'oneclick',
+    fields: ['price'], note: 'GraphQL API. Paid marketplace, 80% creator share. Accepts video (mp4/webm). Real-photo emphasis: place prints first in gallery.',
   },
   {
     id: 'mmf', name: 'MyMiniFactory', org: 'SoulCrafted', dot: '#4FB286',
@@ -2729,7 +2732,7 @@ function BatchUploadPanel({ enabled, project }) {
   const [results, setResults] = useState([]);
   const [scheduledAt, setScheduledAt] = useState('');
   const cancelled = useRef(false);
-  useEffect(() => () => { cancelled.current = true; }, []);
+  useEffect(() => { cancelled.current = false; return () => { cancelled.current = true; }; }, []);
   const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
   const urlFor = (id, slug) => ({
@@ -3159,8 +3162,9 @@ function PlatformPackageCard({ platform, project, cover, platformState, expandSi
             </div>
           )}
 
-          {/* One-click upload (demo) — only platforms with a real upload API */}
-          {platform.hasApi && <MockUploadFlow platform={platform} project={project} startSignal={uploadSignal} />}
+          {/* Real Cults3D upload (live); other API platforms still simulated until their OAuth flows land. */}
+          {platform.id === 'cults' && <CultsUploadFlow platform={platform} project={project} />}
+          {platform.hasApi && platform.id !== 'cults' && <MockUploadFlow platform={platform} project={project} startSignal={uploadSignal} />}
 
           {/* Workflow hint */}
           <div className="border-t pt-3 flex items-start gap-2 text-[13px]" style={{ borderColor: 'rgba(21,23,28,0.08)', color: 'rgba(21,23,28,0.6)' }}>
@@ -3249,7 +3253,7 @@ function MockUploadFlow({ platform, project, startSignal = 0 }) {
   const cancelled = useRef(false);
   const statusRef = useRef('idle');
   useEffect(() => { statusRef.current = status; }, [status]);
-  useEffect(() => () => { cancelled.current = true; }, []);
+  useEffect(() => { cancelled.current = false; return () => { cancelled.current = true; }; }, []);
   const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
   const fileCount = project.files.length;
@@ -3384,6 +3388,289 @@ function MockUploadFlow({ platform, project, startSignal = 0 }) {
 
         <p className="text-[11px] mt-2.5 leading-snug" style={{ color: 'rgba(21,23,28,0.4)' }}>
           Simulation only — nothing is uploaded yet. Real API upload to Cults3D, MyMiniFactory & Thingiverse is the next build phase. For now, use the manual steps below.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+// =====================================================================
+// REAL Cults3D publish flow — POSTs files to the Worker's /api/v1/upload
+// (multipart → R2 → returns a cdn.makerstats.io URL), then calls /publish
+// which forwards createCreation to Cults's GraphQL API. The Worker maps
+// our category/license/price/free vocab to Cults-specific values and
+// returns a `substituted[]` array listing anything it had to swap
+// (e.g. a CC license on a paid listing → cults_cu).
+// =====================================================================
+// VITE_WORKER_URL is set per-env: .env.local for dev (your local override),
+// .env.production for prod builds (committed; points at the deployed Worker).
+const WORKER_URL = (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_WORKER_URL)
+  || 'http://localhost:8787';
+const CULTS_CREDS_KEY = 'modelprep:cults-creds';
+
+function CultsUploadFlow({ platform, project }) {
+  const [creds, setCreds] = useState(null); // { username, apiKey } | null
+  const [status, setStatus] = useState('idle'); // idle | connecting | connected | publishing | done | error
+  const [draftUsername, setDraftUsername] = useState('');
+  const [draftKey, setDraftKey] = useState('');
+  const [result, setResult] = useState(null); // { url, substituted: [], uploadedFiles } | null
+  const [errorMsg, setErrorMsg] = useState('');
+  const [progressMsg, setProgressMsg] = useState('');
+
+  // Load creds from localStorage on mount.
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(CULTS_CREDS_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed?.username && parsed?.apiKey) {
+          setCreds(parsed);
+          setStatus('connected');
+        }
+      }
+    } catch { /* ignore */ }
+  }, []);
+
+  const startConnect = () => {
+    setDraftUsername(creds?.username || '');
+    setDraftKey('');
+    setStatus('connecting');
+  };
+
+  const saveCreds = () => {
+    const u = draftUsername.trim();
+    const k = draftKey.trim();
+    if (!u || !k) return;
+    const next = { username: u, apiKey: k };
+    try { localStorage.setItem(CULTS_CREDS_KEY, JSON.stringify(next)); } catch { /* ignore */ }
+    setCreds(next);
+    setDraftKey('');
+    setStatus('connected');
+  };
+
+  const disconnect = () => {
+    try { localStorage.removeItem(CULTS_CREDS_KEY); } catch { /* ignore */ }
+    setCreds(null);
+    setResult(null);
+    setStatus('idle');
+  };
+
+  // Upload a single File/Blob to the Worker's R2 staging endpoint and return
+  // the public URL the Worker assigned to it.
+  const uploadFile = async (file, label) => {
+    const fd = new FormData();
+    fd.append('file', file, label || file.name || 'upload');
+    const res = await fetch(`${WORKER_URL}/api/v1/upload`, {
+      method: 'POST',
+      headers: {
+        'X-Cults-Username': creds.username,
+        'X-Cults-Api-Key': creds.apiKey,
+      },
+      body: fd,
+    });
+    const data = await res.json();
+    if (!res.ok || !data?.url) {
+      throw new Error(data?.message || data?.error || `Upload failed (HTTP ${res.status})`);
+    }
+    return data.url;
+  };
+
+  const publish = async () => {
+    if (!creds) return;
+    setStatus('publishing');
+    setErrorMsg('');
+    setResult(null);
+    try {
+      // 1. Pick cover + gallery + model files from the React project state.
+      const coverImg = project.images.find(i => i.id === project.coverImageId) || project.images[0];
+      const galleryImgs = project.images.filter(i => i.id !== coverImg?.id);
+      const modelFiles = project.files.filter(f => f.isModel && f.blob);
+      if (!coverImg) throw new Error('Pick a cover image in step 03 before publishing.');
+      if (!modelFiles.length) throw new Error('Add at least one model file in step 01 before publishing.');
+
+      // 2. Upload cover (dataUrl → blob → upload).
+      setProgressMsg('Uploading cover image…');
+      const coverBlob = await fetch(coverImg.dataUrl).then(r => r.blob());
+      const coverExt = (coverBlob.type.split('/')[1] || 'jpg').replace('jpeg', 'jpg');
+      const coverFile = new File([coverBlob], `${slugify(coverImg.alt || 'cover')}.${coverExt}`, { type: coverBlob.type || 'image/jpeg' });
+      const coverImageUrl = await uploadFile(coverFile);
+
+      // 3. Upload gallery (best-effort; ok if there are none).
+      const galleryImageUrls = [];
+      for (let i = 0; i < galleryImgs.length; i++) {
+        setProgressMsg(`Uploading gallery image ${i + 1}/${galleryImgs.length}…`);
+        const blob = await fetch(galleryImgs[i].dataUrl).then(r => r.blob());
+        const ext = (blob.type.split('/')[1] || 'jpg').replace('jpeg', 'jpg');
+        const file = new File([blob], `${slugify(galleryImgs[i].alt || `image-${i + 2}`)}.${ext}`, { type: blob.type || 'image/jpeg' });
+        galleryImageUrls.push(await uploadFile(file));
+      }
+
+      // 4. Upload model files.
+      const modelFileUrls = [];
+      for (let i = 0; i < modelFiles.length; i++) {
+        setProgressMsg(`Uploading ${modelFiles[i].name} (${i + 1}/${modelFiles.length})…`);
+        modelFileUrls.push(await uploadFile(modelFiles[i].blob, modelFiles[i].name));
+      }
+
+      // 5. Publish — Worker forwards these URLs to Cults's createCreation.
+      setProgressMsg('Publishing to Cults3D…');
+      const res = await fetch(`${WORKER_URL}/api/v1/cults3d/publish`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Cults-Username': creds.username,
+          'X-Cults-Api-Key': creds.apiKey,
+        },
+        body: JSON.stringify({
+          title: project.title || 'ModelPrep test from frontend',
+          description: project.description || 'Sent from ModelPrep frontend.',
+          coverImageUrl,
+          galleryImageUrls,
+          modelFileUrls,
+          // Platform-neutral fields the Worker maps to Cults-specific IDs.
+          // The Worker enforces free/paid license compatibility and reports any
+          // user choice it had to substitute in the `substituted` array.
+          category: project.category,                         // CATEGORIES string e.g. 'Toys & Games'
+          license: project.license,                           // LICENSES id e.g. 'ccby'
+          free: project.platforms?.cults?.free ?? true,
+          price: project.platforms?.cults?.price ?? 0,
+          tags: project.tags ?? [],                           // passed for log/audit; Cults metaTags enum not yet wired
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data?.message || data?.error || `HTTP ${res.status}`);
+      }
+      const cultsErrors = data?.response?.data?.createCreation?.errors || [];
+      if (cultsErrors.length) {
+        throw new Error(cultsErrors.join('; '));
+      }
+      const url = data?.response?.data?.createCreation?.creation?.url;
+      setResult({ url, substituted: data?.substituted || [], uploadedFiles: modelFileUrls.length + galleryImageUrls.length + 1 });
+      setStatus('done');
+    } catch (err) {
+      setErrorMsg(err instanceof Error ? err.message : String(err));
+      setStatus('error');
+    } finally {
+      setProgressMsg('');
+    }
+  };
+
+  return (
+    <div className="border-t pt-3" style={{ borderColor: 'rgba(21,23,28,0.08)' }}>
+      <div className="mp-card p-3" style={{ background: 'rgba(255,87,34,0.06)', border: '1px solid rgba(255,87,34,0.45)' }}>
+        <div className="flex items-center gap-2 mb-2 flex-wrap">
+          <span className="mp-display tracking-wide text-[14px]" style={{ color: '#15171C' }}>LIVE PUBLISH</span>
+          <span className="mp-mono text-[11px] uppercase tracking-[0.2em] px-1.5 py-0.5" style={{ background: '#c83f10', color: '#fff' }}>Real</span>
+          <span className="mp-mono text-[11px] uppercase tracking-[0.15em]" style={{ color: 'rgba(21,23,28,0.55)' }}>{platform.name} GraphQL API</span>
+        </div>
+
+        {status === 'idle' && (
+          <>
+            <p className="text-[13px] mb-2.5 leading-snug" style={{ color: 'rgba(21,23,28,0.7)' }}>
+              Connect your {platform.name} account to publish for real. Your API key stays in this browser (localStorage) — it's never stored on our servers.
+            </p>
+            <button onClick={startConnect} className="mp-btn text-xs py-2 px-3"><Globe size={13} /> Connect {platform.name}</button>
+          </>
+        )}
+
+        {status === 'connecting' && (
+          <>
+            <p className="text-[13px] mb-2.5 leading-snug" style={{ color: 'rgba(21,23,28,0.7)' }}>
+              Get your API key at <a href="https://cults3d.com/en/api/keys" target="_blank" rel="noopener noreferrer" style={{ color: '#FF5722', textDecoration: 'underline' }}>cults3d.com/en/api/keys</a>. Stays in your browser only.
+            </p>
+            <div className="flex flex-col gap-2 mb-2.5" style={{ maxWidth: 380 }}>
+              <input
+                type="text"
+                value={draftUsername}
+                onChange={(e) => setDraftUsername(e.target.value)}
+                placeholder="Cults nickname (e.g. minimal_studio_3d)"
+                autoFocus
+                className="mp-input-sm"
+                aria-label="Cults username"
+              />
+              <input
+                type="password"
+                value={draftKey}
+                onChange={(e) => setDraftKey(e.target.value)}
+                placeholder="API key"
+                onKeyDown={(e) => { if (e.key === 'Enter' && draftUsername.trim() && draftKey.trim()) saveCreds(); }}
+                className="mp-input-sm"
+                aria-label="Cults API key"
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <button onClick={saveCreds} disabled={!draftUsername.trim() || !draftKey.trim()} className="mp-btn text-xs py-2 px-3 disabled:opacity-40"><Check size={13} /> Save &amp; connect</button>
+              <button onClick={() => setStatus(creds ? 'connected' : 'idle')} className="mp-mono text-[12px] uppercase tracking-[0.15em] hover:text-[#FF5722] transition">Cancel</button>
+            </div>
+          </>
+        )}
+
+        {status === 'connected' && (
+          <>
+            <div className="flex items-center gap-2 text-xs mb-2.5 flex-wrap" style={{ color: '#3a8d68' }}>
+              <Check size={14} /> Connected as <span className="mp-mono">@{creds?.username}</span>
+              <button onClick={disconnect} className="mp-mono text-[11px] uppercase tracking-[0.15em] hover:text-[#c83f10] transition ml-2" style={{ color: 'rgba(21,23,28,0.55)' }}>disconnect</button>
+            </div>
+            <p className="text-[12px] mb-2.5 leading-snug" style={{ color: 'rgba(21,23,28,0.6)' }}>
+              ⚠️ This publishes a <strong>live, public listing</strong> on cults3d.com/@{creds?.username}. Files are staged via our Worker → R2. <strong>If the Worker is local (localhost:8787)</strong>, Cults can't reach it and will substitute placeholders for the image + model files (deploy the Worker to send real files).
+            </p>
+            <button onClick={publish} className="mp-btn text-xs py-2 px-3"><Send size={13} /> Publish to {platform.name} (LIVE)</button>
+          </>
+        )}
+
+        {status === 'publishing' && (
+          <div className="flex items-center gap-2 text-xs py-1.5" style={{ color: 'rgba(21,23,28,0.7)' }}>
+            <Loader size={14} className="mp-spin" /> {progressMsg || `Publishing to ${platform.name}…`}
+          </div>
+        )}
+
+        {status === 'done' && (
+          <>
+            <div className="flex items-center gap-2 text-xs mb-1.5" style={{ color: '#3a8d68' }}>
+              <Check size={14} /> Published to {platform.name} {result?.uploadedFiles ? <span style={{ color: 'rgba(21,23,28,0.55)' }}>· {result.uploadedFiles} file{result.uploadedFiles === 1 ? '' : 's'} staged</span> : null}
+            </div>
+            {result?.url && (
+              <a href={result.url} target="_blank" rel="noopener noreferrer" className="mp-card mp-mono text-[13px] p-2 mb-2 break-all block hover:text-[#FF5722] transition" style={{ background: 'rgba(21,23,28,0.04)', color: 'rgba(21,23,28,0.85)' }}>
+                {result.url}
+              </a>
+            )}
+            {result?.substituted?.length > 0 && (
+              <p className="text-[11px] mb-2 leading-snug" style={{ color: 'rgba(21,23,28,0.55)' }}>
+                {/* The Worker reports back per-field substitutions so the user knows what didn't sync. Three cases handled below: license incompatibility, unmapped category, and tags (Cults's tag vocabulary is undocumented so we don't push user tags yet). */}
+                {result.substituted.includes('license') && 'License was swapped — Cults rules: free listings need a CC or cults_pu license; paid listings need a CULTS commercial license. '}
+                {result.substituted.includes('category') && 'Category was mapped to Various — your category didn\'t match any Cults bucket. '}
+                {result.substituted.includes('tags') && 'Tags are shown only in ModelPrep — Cults uses an internal tag vocabulary we don\'t yet support. '}
+                {(result.substituted.includes('coverImageUrl') || result.substituted.includes('modelFileUrls')) && 'Some media fell back to placeholders. '}
+              </p>
+            )}
+            <div className="flex items-center gap-2 flex-wrap">
+              <button onClick={() => { setStatus('connected'); setResult(null); }} className="mp-mono text-[12px] uppercase tracking-[0.2em] hover:text-[#FF5722] transition flex items-center gap-1">
+                <ArrowRight size={11} /> Publish another
+              </button>
+              <span style={{ color: 'rgba(21,23,28,0.25)' }}>·</span>
+              <button onClick={disconnect} className="mp-mono text-[12px] uppercase tracking-[0.15em] hover:text-[#c83f10] transition" style={{ color: 'rgba(21,23,28,0.55)' }}>disconnect</button>
+            </div>
+          </>
+        )}
+
+        {status === 'error' && (
+          <>
+            <div className="flex items-center gap-2 text-xs mb-1.5" style={{ color: '#c83f10' }}>
+              <X size={14} /> Publish failed
+            </div>
+            <div className="mp-card text-[12px] p-2 mb-2 break-all" style={{ background: 'rgba(200,63,16,0.06)', border: '1px solid rgba(200,63,16,0.3)', color: 'rgba(21,23,28,0.8)' }}>
+              {errorMsg || 'Unknown error.'}
+            </div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <button onClick={publish} className="mp-btn text-xs py-2 px-3"><ArrowRight size={13} /> Retry</button>
+              <button onClick={disconnect} className="mp-mono text-[12px] uppercase tracking-[0.15em] hover:text-[#c83f10] transition" style={{ color: 'rgba(21,23,28,0.55)' }}>disconnect</button>
+            </div>
+          </>
+        )}
+
+        <p className="text-[10px] mt-2.5 leading-snug" style={{ color: 'rgba(21,23,28,0.45)' }}>
+          Requires the ModelPrep backend running locally (<span className="mp-mono">cd modelprep-backend && npm run dev</span>) at {WORKER_URL}.
         </p>
       </div>
     </div>
