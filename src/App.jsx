@@ -2614,8 +2614,15 @@ function PublishSection({ project, allReady, completion, setCurrentSection }) {
   const cover = project.images.find(i => i.id === project.coverImageId);
   // Broadcast signals so the parent can expand/collapse every card at once.
   // Cards keep their own `expanded` state; they just react to a signal change.
+  // `allExpanded` tracks the last bulk action so the single toggle button can
+  // show "Collapse all" or "Expand all" appropriately.
   const [expandSignal, setExpandSignal] = useState(0);
   const [collapseSignal, setCollapseSignal] = useState(0);
+  const [allExpanded, setAllExpanded] = useState(true); // cards default to expanded
+  const toggleAll = () => {
+    if (allExpanded) { setCollapseSignal(n => n + 1); setAllExpanded(false); }
+    else { setExpandSignal(n => n + 1); setAllExpanded(true); }
+  };
 
   if (!allReady) {
     return (
@@ -2668,25 +2675,15 @@ function PublishSection({ project, allReady, completion, setCurrentSection }) {
       {enabled.length > 1 && (
         <div className="mt-5 flex items-center justify-between gap-3 flex-wrap">
           <span className="mp-mono text-[12px] uppercase tracking-[0.15em]" style={{ color: 'rgba(21,23,28,0.55)' }}>
-            {enabled.length} platform package{enabled.length === 1 ? '' : 's'}
+            {enabled.length} platform packages
           </span>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setExpandSignal(n => n + 1)}
-              className="mp-mono text-[12px] uppercase tracking-[0.15em] py-1.5 px-2 hover:text-[#FF5722] transition flex items-center gap-1.5"
-              aria-label="Expand every platform package"
-            >
-              <ChevronDown size={13} /> Expand all
-            </button>
-            <span style={{ color: 'rgba(21,23,28,0.25)' }}>·</span>
-            <button
-              onClick={() => setCollapseSignal(n => n + 1)}
-              className="mp-mono text-[12px] uppercase tracking-[0.15em] py-1.5 px-2 hover:text-[#FF5722] transition flex items-center gap-1.5"
-              aria-label="Collapse every platform package"
-            >
-              <ChevronRight size={13} /> Collapse all
-            </button>
-          </div>
+          <button
+            onClick={toggleAll}
+            className="mp-mono text-[12px] uppercase tracking-[0.15em] py-1.5 px-2 hover:text-[#FF5722] transition flex items-center gap-1.5"
+            aria-label={allExpanded ? 'Collapse every platform package' : 'Expand every platform package'}
+          >
+            {allExpanded ? <><ChevronRight size={13} /> Collapse all</> : <><ChevronDown size={13} /> Expand all</>}
+          </button>
         </div>
       )}
 
