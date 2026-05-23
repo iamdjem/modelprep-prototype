@@ -2612,6 +2612,10 @@ function PlatformCard({ platform, state, onToggle, onUpdate }) {
 function PublishSection({ project, allReady, completion, setCurrentSection }) {
   const enabled = PLATFORMS.filter(p => project.platforms[p.id]?.enabled);
   const cover = project.images.find(i => i.id === project.coverImageId);
+  // Broadcast signals so the parent can expand/collapse every card at once.
+  // Cards keep their own `expanded` state; they just react to a signal change.
+  const [expandSignal, setExpandSignal] = useState(0);
+  const [collapseSignal, setCollapseSignal] = useState(0);
 
   if (!allReady) {
     return (
@@ -2661,7 +2665,32 @@ function PublishSection({ project, allReady, completion, setCurrentSection }) {
 
       <BatchUploadPanel enabled={enabled} project={project} />
 
-      <div className="mt-5 space-y-4">
+      {enabled.length > 1 && (
+        <div className="mt-5 flex items-center justify-between gap-3 flex-wrap">
+          <span className="mp-mono text-[12px] uppercase tracking-[0.15em]" style={{ color: 'rgba(21,23,28,0.55)' }}>
+            {enabled.length} platform package{enabled.length === 1 ? '' : 's'}
+          </span>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setExpandSignal(n => n + 1)}
+              className="mp-mono text-[12px] uppercase tracking-[0.15em] py-1.5 px-2 hover:text-[#FF5722] transition flex items-center gap-1.5"
+              aria-label="Expand every platform package"
+            >
+              <ChevronDown size={13} /> Expand all
+            </button>
+            <span style={{ color: 'rgba(21,23,28,0.25)' }}>·</span>
+            <button
+              onClick={() => setCollapseSignal(n => n + 1)}
+              className="mp-mono text-[12px] uppercase tracking-[0.15em] py-1.5 px-2 hover:text-[#FF5722] transition flex items-center gap-1.5"
+              aria-label="Collapse every platform package"
+            >
+              <ChevronRight size={13} /> Collapse all
+            </button>
+          </div>
+        </div>
+      )}
+
+      <div className="mt-3 space-y-4">
         {enabled.map(p => (
           <PlatformPackageCard
             key={p.id}
@@ -2669,6 +2698,8 @@ function PublishSection({ project, allReady, completion, setCurrentSection }) {
             project={project}
             cover={cover}
             platformState={project.platforms[p.id]}
+            expandSignal={expandSignal}
+            collapseSignal={collapseSignal}
           />
         ))}
       </div>
@@ -2856,11 +2887,15 @@ function BatchZipButton({ enabled, project, cover }) {
   );
 }
 
-function PlatformPackageCard({ platform, project, cover, platformState }) {
+function PlatformPackageCard({ platform, project, cover, platformState, expandSignal = 0, collapseSignal = 0 }) {
   const [expanded, setExpanded] = useState(true);
   const [downloading, setDownloading] = useState(false);
   const [progressMsg, setProgressMsg] = useState(null);
   const [uploadSignal, setUploadSignal] = useState(0);
+
+  // React to the parent's expand-all / collapse-all broadcasts.
+  useEffect(() => { if (expandSignal > 0) setExpanded(true); }, [expandSignal]);
+  useEffect(() => { if (collapseSignal > 0) setExpanded(false); }, [collapseSignal]);
 
   const desc = useMemo(() => {
     if (platform.descFormat === 'markdown') return project.description;
